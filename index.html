@@ -310,9 +310,9 @@
         <div class="panel howto">
             <h2>How to Play</h2>
             <p>Dodge falling bombs and their blasts for 5 one-minute waves. Catch airdrops for extra lives.</p>
-            <p>Each wave drops one giant bomb at a random moment — twice as big, faster, and it costs two lives.</p>
+            <p>Each wave drops one giant bomb at a random moment — twice as big, faster, and it costs two lives. Level 5 drops a second randomized giant bomb.</p>
             <p>Soldiers enter from both sides, walk toward you, and shoot. Jump to dodge bullets. A bomb blast kills them. Contact or a bullet costs a life.</p>
-            <p>Level 4 adds a third soldier from a random side. Level 5 sends two synchronized pairs, one soldier from each side.</p>
+            <p>Level 4 adds a third soldier from a random side. Level 5 sends two synchronized pairs, plus one extra soldier from a random side at a random time.</p>
             <p>Keyboard: <kbd>←</kbd> <kbd>→</kbd> or <kbd>A</kbd> <kbd>D</kbd> to move; <kbd>Space</kbd> <kbd>W</kbd> or <kbd>↑</kbd> to jump.<br>Mouse: move the pointer to steer; click the playfield or JUMP to jump.<br>Touch: drag to steer; swipe up or tap JUMP to jump.</p>
             <p>Click or tap menu buttons. With a keyboard, use <kbd>Tab</kbd> to select a button and <kbd>Enter</kbd> or <kbd>Space</kbd> to activate it.</p>
             <p><kbd>Esc</kbd> or <kbd>P</kbd> pauses. YouTube mute controls the sound.</p>
@@ -424,8 +424,7 @@
         let airdropsCaught = 0;
         let airdropSpawned = false;
         let airdropAt = 12;
-        let giantSpawned = false;
-        let giantAt = 16;
+        let giantBombWaves = [];
         let lastBomb = 0;
         let spawnEvery = 950;
         let lastTime = 0;
@@ -950,9 +949,13 @@
         function configureEnemyWaves() {
             if (level === 5) {
                 // Two attacks, each with soldiers entering from both sides together.
+                const firstPairAt = 8 + Math.random() * 10;
+                const extraSoldierAt = 20 + Math.random() * 8;
+                const secondPairAt = 32 + Math.random() * 10;
                 enemyWaves = [
-                    { at: 8 + Math.random() * 10, sides: [true, false], spawned: false },
-                    { at: 32 + Math.random() * 10, sides: [true, false], spawned: false }
+                    { at: firstPairAt, sides: [true, false], spawned: false },
+                    { at: extraSoldierAt, sides: [Math.random() < 0.5], spawned: false },
+                    { at: secondPairAt, sides: [true, false], spawned: false }
                 ];
                 return;
             }
@@ -973,6 +976,26 @@
             }
         }
 
+        function configureGiantBombs() {
+            let firstAt = 6 + Math.random() * 40;
+            if (Math.abs(firstAt - airdropAt) < 4) firstAt = Math.min(52, airdropAt + 10);
+            giantBombWaves = [{ at: firstAt, spawned: false }];
+
+            if (level === 5) {
+                let secondAt = 6;
+                let attempts = 0;
+                do {
+                    secondAt = 6 + Math.random() * 46;
+                    attempts += 1;
+                } while (
+                    attempts < 30 &&
+                    (Math.abs(secondAt - firstAt) < 8 || Math.abs(secondAt - airdropAt) < 4)
+                );
+                giantBombWaves.push({ at: secondAt, spawned: false });
+                giantBombWaves.sort((a, b) => a.at - b.at);
+            }
+        }
+
         function resetRun() {
             player.lives = 3;
             player.invuln = 0;
@@ -990,9 +1013,7 @@
             airdropsCaught = 0;
             airdropSpawned = false;
             airdropAt = 8 + Math.random() * 28;
-            giantSpawned = false;
-            giantAt = 6 + Math.random() * 40;
-            if (Math.abs(giantAt - airdropAt) < 4) giantAt = Math.min(52, airdropAt + 10);
+            configureGiantBombs();
             lastBomb = 0;
             spawnEvery = 950;
             ended = false;
@@ -1036,7 +1057,6 @@
 
         function spawnGiantBomb() {
             spawnBomb(true);
-            giantSpawned = true;
             setBanner('Giant bomb!', 1.5);
         }
 
@@ -1218,9 +1238,7 @@
                     spawnEvery = Math.max(380, spawnEvery - 140);
                     airdropSpawned = false;
                     airdropAt = 8 + Math.random() * 28;
-                    giantSpawned = false;
-                    giantAt = 6 + Math.random() * 40;
-                    if (Math.abs(giantAt - airdropAt) < 4) giantAt = Math.min(52, airdropAt + 10);
+                    configureGiantBombs();
                     enemies = [];
                     bullets = [];
                     configureEnemyWaves();
@@ -1281,7 +1299,11 @@
 
             const elapsed = LEVEL_TIME - timeLeft;
             if (!airdropSpawned && elapsed >= airdropAt) spawnAirdrop();
-            if (!giantSpawned && elapsed >= giantAt) spawnGiantBomb();
+            giantBombWaves.forEach((wave) => {
+                if (wave.spawned || elapsed < wave.at) return;
+                spawnGiantBomb();
+                wave.spawned = true;
+            });
             enemyWaves.forEach((wave) => {
                 if (wave.spawned || elapsed < wave.at) return;
                 wave.sides.forEach((fromLeft) => spawnEnemy(fromLeft));
