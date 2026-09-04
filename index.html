@@ -370,6 +370,7 @@
         const LEVEL_TIME = 60;
         const MAX_LEVEL = 5;
         const INVULN = 1.15;
+        const BACKGROUND_FADE_TIME = 2.5;
         const LEVEL_NAMES = ['The Beginning', 'Ashes in the Air', 'No Safe Ground', "It's Getting Darker", 'Last Man Standing'];
         const SKY = ['#8a8f86', '#6e736c', '#4a4e49', '#2c2e2c', '#161718'];
         const SKY2 = ['#c4b089', '#8b7d62', '#5a5346', '#2f2c28', '#10100f'];
@@ -432,6 +433,9 @@
         let ended = false;
         let victory = false;
         let shake = 0;
+        let backgroundFrom = 0;
+        let backgroundTo = 0;
+        let backgroundBlend = 1;
 
         const keys = { left: false, right: false };
         const pointer = { down: false, x: 0, hover: false, startY: 0 };
@@ -478,6 +482,21 @@
         }
 
         function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+        function mixColor(from, to, amount) {
+            const a = parseInt(from.slice(1), 16);
+            const b = parseInt(to.slice(1), 16);
+            const ar = (a >> 16) & 255;
+            const ag = (a >> 8) & 255;
+            const ab = a & 255;
+            const br = (b >> 16) & 255;
+            const bg = (b >> 8) & 255;
+            const bb = b & 255;
+            const r = Math.round(ar + (br - ar) * amount);
+            const g = Math.round(ag + (bg - ag) * amount);
+            const bl = Math.round(ab + (bb - ab) * amount);
+            return 'rgb(' + r + ',' + g + ',' + bl + ')';
+        }
 
         function bakePixels(rows, palette, scale) {
             const w = rows.reduce((m, r) => Math.max(m, r.length), 0);
@@ -907,18 +926,25 @@
             if (!clouds.length) seedClouds();
         }
 
+        function makeCloud(opacity) {
+            return {
+                x: Math.random() * worldW,
+                y: Math.random() * worldH * 0.38,
+                w: 70 + Math.random() * 180,
+                h: 18 + Math.random() * 36,
+                s: 8 + Math.random() * 14,
+                opacity: opacity
+            };
+        }
+
         function seedClouds() {
             clouds = [];
             const n = 5 + level * 3;
-            for (let i = 0; i < n; i++) {
-                clouds.push({
-                    x: Math.random() * worldW,
-                    y: Math.random() * worldH * 0.38,
-                    w: 70 + Math.random() * 180,
-                    h: 18 + Math.random() * 36,
-                    s: 8 + Math.random() * 14
-                });
-            }
+            for (let i = 0; i < n; i++) clouds.push(makeCloud(1));
+        }
+
+        function addLevelClouds() {
+            for (let i = 0; i < 3; i++) clouds.push(makeCloud(0));
         }
 
         function configureEnemyWaves() {
@@ -980,6 +1006,9 @@
             player.grounded = true;
             player.y = worldH - groundH - player.h + 6;
             shake = 0;
+            backgroundFrom = 0;
+            backgroundTo = 0;
+            backgroundBlend = 1;
             seedClouds();
             setBanner('', 0);
         }
@@ -1149,6 +1178,9 @@
             const cspd = 12 + (level - 1) * 10;
             clouds.forEach((c) => {
                 c.x += cspd * dt * (c.s / 12);
+                if (c.opacity < 1) {
+                    c.opacity = Math.min(1, c.opacity + dt / BACKGROUND_FADE_TIME);
+                }
                 if (c.x > worldW + c.w) {
                     c.x = -c.w;
                     c.y = Math.random() * worldH * 0.38;
@@ -1158,6 +1190,9 @@
 
         function update(dt, now) {
             driftClouds(dt);
+            if (backgroundBlend < 1) {
+                backgroundBlend = Math.min(1, backgroundBlend + dt / BACKGROUND_FADE_TIME);
+            }
             if (shake > 0) shake = Math.max(0, shake - dt * 38);
             if (screen !== 'play' || userPaused || ended) {
                 player.moving = false;
@@ -1175,7 +1210,10 @@
 
             if (timeLeft <= 0) {
                 if (level < MAX_LEVEL) {
+                    backgroundFrom = level - 1;
                     level += 1;
+                    backgroundTo = level - 1;
+                    backgroundBlend = 0;
                     timeLeft = LEVEL_TIME;
                     spawnEvery = Math.max(380, spawnEvery - 140);
                     airdropSpawned = false;
@@ -1186,7 +1224,7 @@
                     enemies = [];
                     bullets = [];
                     configureEnemyWaves();
-                    seedClouds();
+                    addLevelClouds();
                     beep('levelUp');
                     setBanner('Level ' + level + ' — ' + LEVEL_NAMES[level - 1], 2);
                     if (level > save.bestLevel) {
@@ -1386,20 +1424,29 @@
             ctx.setTransform(dpr, 0, 0, dpr, sx * dpr, sy * dpr);
             ctx.imageSmoothingEnabled = false;
 
-            const li = clamp(level, 1, 5) - 1;
+            const from = clamp(backgroundFrom, 0, MAX_LEVEL - 1);
+            const to = clamp(backgroundTo, 0, MAX_LEVEL - 1);
+            const fade = backgroundBlend * backgroundBlend * (3 - 2 * backgroundBlend);
             const g = ctx.createLinearGradient(0, 0, 0, worldH);
-            g.addColorStop(0, SKY[li]);
-            g.addColorStop(0.55, SKY2[li]);
+            g.addColorStop(0, mixColor(SKY[from], SKY[to], fade));
+            g.addColorStop(0.55, mixColor(SKY2[from], SKY2[to], fade));
             g.addColorStop(1, '#2a2116');
             ctx.fillStyle = g;
             ctx.fillRect(0, 0, worldW, worldH);
 
-            ctx.fillStyle = CLOUD[li];
+            ctx.fillStyle = mixColor(CLOUD[from], CLOUD[to], fade);
             clouds.forEach((c) => {
+                ctx.globalAlpha = c.opacity == null ? 1 : c.opacity;
                 ctx.beginPath();
                 ctx.ellipse(c.x + c.w / 2, c.y + c.h / 2, c.w / 2, c.h / 2, 0, 0, Math.PI * 2);
                 ctx.fill();
             });
+            ctx.globalAlpha = 1;
+
+            if (backgroundBlend < 1) {
+                ctx.fillStyle = 'rgba(20, 12, 6,' + (Math.sin(Math.PI * backgroundBlend) * 0.16) + ')';
+                ctx.fillRect(0, 0, worldW, worldH);
+            }
 
             explosions.forEach((e) => {
                 const k = e.t / e.max;
