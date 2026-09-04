@@ -309,7 +309,7 @@
     <div id="howto" class="overlay hidden">
         <div class="panel howto">
             <h2>How to Play</h2>
-            <p>Dodge falling bombs and their blasts for 5 one-minute waves. Catch airdrops for extra lives.</p>
+            <p>Dodge falling bombs and their blasts for 5 one-minute waves. After the final timer, survive 5 more seconds while the remaining hazards clear. Catch airdrops for extra lives.</p>
             <p>Each wave drops one giant bomb at a random moment — twice as big, faster, and it costs two lives. Level 5 drops a second randomized giant bomb.</p>
             <p>Soldiers enter from both sides, walk toward you, and shoot. Jump to dodge bullets. A bomb blast kills them. Contact or a bullet costs a life.</p>
             <p>Level 4 adds a third soldier from a random side. Level 5 sends two synchronized pairs, plus one extra soldier from a random side at a random time.</p>
@@ -371,6 +371,7 @@
         const MAX_LEVEL = 5;
         const INVULN = 1.15;
         const BACKGROUND_FADE_TIME = 2.5;
+        const VICTORY_GRACE_TIME = 5;
         const LEVEL_NAMES = ['The Beginning', 'Ashes in the Air', 'No Safe Ground', "It's Getting Darker", 'Last Man Standing'];
         const SKY = ['#8a8f86', '#6e736c', '#4a4e49', '#2c2e2c', '#161718'];
         const SKY2 = ['#c4b089', '#8b7d62', '#5a5346', '#2f2c28', '#10100f'];
@@ -417,6 +418,7 @@
         let clouds = [];
         let enemies = [];
         let bullets = [];
+        let floorDamage = [];
         let enemyWaves = [];
         let level = 1;
         let timeLeft = LEVEL_TIME;
@@ -431,6 +433,8 @@
         let banner = { text: '', t: 0 };
         let ended = false;
         let victory = false;
+        let awaitingVictory = false;
+        let victoryDelay = 0;
         let shake = 0;
         let backgroundFrom = 0;
         let backgroundTo = 0;
@@ -1006,6 +1010,7 @@
             particles = [];
             enemies = [];
             bullets = [];
+            floorDamage = [];
             level = 1;
             configureEnemyWaves();
             timeLeft = LEVEL_TIME;
@@ -1018,6 +1023,8 @@
             spawnEvery = 950;
             ended = false;
             victory = false;
+            awaitingVictory = false;
+            victoryDelay = 0;
             userPaused = false;
             player.facing = 1;
             player.moving = false;
@@ -1037,6 +1044,100 @@
         function bombBaseSize() {
             const bw = Math.round(clamp(worldH * 0.045, 22, 38));
             return { bw: bw, bh: Math.round(bw * 2.1) };
+        }
+
+        function addFloorDamage(x, giant) {
+            const normalizedX = clamp(x / Math.max(1, worldW), 0, 1);
+            const mergeRadius = clamp(worldH * 0.025, 8, 20);
+            let closest = null;
+            let closestDistance = Infinity;
+
+            floorDamage.forEach((crack) => {
+                const distance = Math.abs(crack.x * worldW - x);
+                const grownRadius = mergeRadius + Math.min(10, crack.widthDamage * 0.65);
+                if (distance <= grownRadius && distance < closestDistance) {
+                    closest = crack;
+                    closestDistance = distance;
+                }
+            });
+
+            const depthAdded = giant ? 5 : 1;
+            const widthAdded = giant ? 2 : 1;
+            if (closest) {
+                const oldWeight = closest.widthDamage;
+                closest.x = (closest.x * oldWeight + normalizedX * widthAdded) / (oldWeight + widthAdded);
+                closest.depthDamage += depthAdded;
+                closest.widthDamage += widthAdded;
+                closest.impacts += 1;
+                return;
+            }
+
+            floorDamage.push({
+                x: normalizedX,
+                depthDamage: depthAdded,
+                widthDamage: widthAdded,
+                impacts: 1,
+                seed: Math.random() * 10000
+            });
+        }
+
+        function crackNoise(seed, step) {
+            const value = Math.sin(seed * 12.9898 + step * 78.233) * 43758.5453;
+            return value - Math.floor(value);
+        }
+
+        function drawFloorDamage(groundY) {
+            ctx.save();
+            floorDamage.forEach((crack) => {
+                const x = crack.x * worldW;
+                const depth = Math.min(groundH - 6, 3.5 + crack.depthDamage * 2.05);
+                const width = Math.min(worldW * 0.1, 3.5 + crack.widthDamage * 1.75);
+                const steps = Math.max(2, Math.ceil(depth / 4));
+                const trunk = [{ x: x, y: groundY }];
+
+                for (let i = 1; i <= steps; i++) {
+                    const progress = i / steps;
+                    trunk.push({
+                        x: x + (crackNoise(crack.seed, i) - 0.5) * width * 0.55,
+                        y: groundY + depth * progress
+                    });
+                }
+
+                ctx.strokeStyle = '#120c07';
+                ctx.lineWidth = clamp(0.8 + Math.sqrt(crack.widthDamage) * 0.45, 1, 3.2);
+                ctx.lineCap = 'square';
+                ctx.lineJoin = 'miter';
+                ctx.beginPath();
+                ctx.moveTo(trunk[0].x, trunk[0].y);
+                for (let i = 1; i < trunk.length; i++) ctx.lineTo(trunk[i].x, trunk[i].y);
+                ctx.stroke();
+
+                const branchCount = Math.min(7, Math.max(1, Math.floor((crack.widthDamage + 1) / 2)));
+                ctx.lineWidth = Math.max(1, ctx.lineWidth * 0.62);
+                for (let i = 0; i < branchCount; i++) {
+                    const trunkIndex = 1 + Math.floor(crackNoise(crack.seed, 30 + i) * Math.max(1, trunk.length - 2));
+                    const origin = trunk[Math.min(trunkIndex, trunk.length - 1)];
+                    const side = crackNoise(crack.seed, 50 + i) < 0.5 ? -1 : 1;
+                    const reach = width * (0.3 + crackNoise(crack.seed, 70 + i) * 0.45);
+                    ctx.beginPath();
+                    ctx.moveTo(origin.x, origin.y);
+                    ctx.lineTo(
+                        origin.x + side * reach * 0.55,
+                        origin.y + depth * (0.06 + crackNoise(crack.seed, 90 + i) * 0.1)
+                    );
+                    ctx.lineTo(
+                        origin.x + side * reach,
+                        origin.y + depth * (0.1 + crackNoise(crack.seed, 110 + i) * 0.16)
+                    );
+                    ctx.stroke();
+                }
+
+                ctx.fillStyle = '#181008';
+                ctx.beginPath();
+                ctx.ellipse(x, groundY + 1, Math.max(2, width * 0.42), Math.max(1, ctx.lineWidth), 0, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.restore();
         }
 
         function spawnBomb(giant) {
@@ -1063,6 +1164,7 @@
         function spawnEnemy(fromLeft) {
             const w = player.w;
             const h = player.h;
+            const fireEvery = Math.max(1.15, 2.7 - (level - 1) * 0.28);
             enemies.push({
                 x: fromLeft ? -w - 10 : worldW + 10,
                 y: worldH - groundH - h + 6,
@@ -1070,8 +1172,9 @@
                 h: h,
                 facing: fromLeft ? 1 : -1,
                 speed: worldW / (22 - (level - 1) * 2.4),
-                fire: 0.4,
-                fireEvery: Math.max(1.15, 2.7 - (level - 1) * 0.28),
+                fire: Math.random() * fireEvery,
+                fireEvery: fireEvery,
+                bulletSpeed: 420 + (level - 1) * 85,
                 anim: 0,
                 dead: false
             });
@@ -1086,7 +1189,7 @@
                 y: en.y + en.h * 0.42,
                 w: w,
                 h: h,
-                vx: dir * (420 + (level - 1) * 85)
+                vx: dir * en.bulletSpeed
             });
             beep('shoot');
         }
@@ -1119,7 +1222,8 @@
             const life = giant ? 0.75 : 0.45;
             explosions.push({ x: x, y: y, r: r, t: life, max: life, dmg: giant ? 2 : 1 });
             beep('explosion', giant);
-            shake = Math.max(shake, giant ? 16 : 3.5);
+            const levelShakeMultiplier = 1 + (level - 1) * 0.01;
+            shake = Math.max(shake, (giant ? 16 : 3.5) * levelShakeMultiplier);
             const n = giant ? 28 : 14;
             for (let i = 0; i < n; i++) {
                 const a = Math.random() * Math.PI * (fromGround ? 1 : 2);
@@ -1154,6 +1258,7 @@
         function finish(won) {
             ended = true;
             victory = won;
+            awaitingVictory = false;
             const bonus = won ? (2500 + player.lives * 150) : 0;
             score += bonus;
             if (level > save.bestLevel) save.bestLevel = level;
@@ -1220,7 +1325,15 @@
                 return;
             }
 
-            timeLeft -= dt;
+            if (awaitingVictory) {
+                victoryDelay -= dt;
+                if (victoryDelay <= 0) {
+                    finish(true);
+                    return;
+                }
+            } else {
+                timeLeft -= dt;
+            }
             score += dt * 10 * level;
             if (banner.t > 0) {
                 banner.t -= dt;
@@ -1228,7 +1341,7 @@
             }
             if (player.invuln > 0) player.invuln -= dt;
 
-            if (timeLeft <= 0) {
+            if (!awaitingVictory && timeLeft <= 0) {
                 if (level < MAX_LEVEL) {
                     backgroundFrom = level - 1;
                     level += 1;
@@ -1239,8 +1352,6 @@
                     airdropSpawned = false;
                     airdropAt = 8 + Math.random() * 28;
                     configureGiantBombs();
-                    enemies = [];
-                    bullets = [];
                     configureEnemyWaves();
                     addLevelClouds();
                     beep('levelUp');
@@ -1250,8 +1361,10 @@
                         persistSave();
                     }
                 } else {
-                    finish(true);
-                    return;
+                    timeLeft = 0;
+                    awaitingVictory = true;
+                    victoryDelay = VICTORY_GRACE_TIME;
+                    setBanner('Survive the final fallout — 5 seconds', VICTORY_GRACE_TIME);
                 }
             }
 
@@ -1290,25 +1403,27 @@
             player.anim += dt;
             player.lastX = player.x;
 
-            lastBomb += dt * 1000;
-            const rate = spawnEvery / Math.max(1, Math.min(1.25, worldW / 900));
-            if (lastBomb >= rate) {
-                spawnBomb(false);
-                lastBomb = 0;
-            }
+            if (!awaitingVictory) {
+                lastBomb += dt * 1000;
+                const rate = spawnEvery / Math.max(1, Math.min(1.25, worldW / 900));
+                if (lastBomb >= rate) {
+                    spawnBomb(false);
+                    lastBomb = 0;
+                }
 
-            const elapsed = LEVEL_TIME - timeLeft;
-            if (!airdropSpawned && elapsed >= airdropAt) spawnAirdrop();
-            giantBombWaves.forEach((wave) => {
-                if (wave.spawned || elapsed < wave.at) return;
-                spawnGiantBomb();
-                wave.spawned = true;
-            });
-            enemyWaves.forEach((wave) => {
-                if (wave.spawned || elapsed < wave.at) return;
-                wave.sides.forEach((fromLeft) => spawnEnemy(fromLeft));
-                wave.spawned = true;
-            });
+                const elapsed = LEVEL_TIME - timeLeft;
+                if (!airdropSpawned && elapsed >= airdropAt) spawnAirdrop();
+                giantBombWaves.forEach((wave) => {
+                    if (wave.spawned || elapsed < wave.at) return;
+                    spawnGiantBomb();
+                    wave.spawned = true;
+                });
+                enemyWaves.forEach((wave) => {
+                    if (wave.spawned || elapsed < wave.at) return;
+                    wave.sides.forEach((fromLeft) => spawnEnemy(fromLeft));
+                    wave.spawned = true;
+                });
+            }
 
             const groundY = worldH - groundH;
             bombs = bombs.filter((b) => {
@@ -1328,6 +1443,7 @@
                     return false;
                 }
                 if (b.y + b.h >= groundY) {
+                    addFloorDamage(b.x + b.w / 2, b.giant);
                     explode(b.x + b.w / 2, groundY, true, b.giant);
                     return false;
                 }
@@ -1517,6 +1633,7 @@
                 ctx.lineTo(x + 16, gy + 4);
             }
             ctx.stroke();
+            drawFloorDamage(gy);
 
             enemies.forEach((en) => {
                 const moving = Math.abs((player.x + player.w / 2) - (en.x + en.w / 2)) > 8;
@@ -1557,8 +1674,12 @@
             }
 
             hudLeft.textContent = 'LVL ' + level;
-            const sec = Math.max(0, Math.ceil(timeLeft));
-            hudMid.textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+            if (awaitingVictory) {
+                hudMid.textContent = 'HOLD ' + Math.max(1, Math.ceil(victoryDelay));
+            } else {
+                const sec = Math.max(0, Math.ceil(timeLeft));
+                hudMid.textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+            }
             scoreHud.textContent = String(Math.floor(score));
             renderLives();
         }
