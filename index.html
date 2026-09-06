@@ -487,7 +487,9 @@
             <div class="btn-row">
                 <button class="primary" id="playBtn" type="button">Play</button>
                 <button id="howBtn" type="button">How to Play</button>
+                <button id="controlsBtn" type="button" aria-label="Control mode: Auto">Controls: AUTO</button>
                 <button id="fxBtn" type="button">FX: Auto</button>
+                <button id="guidesBtn" type="button" aria-label="Bomb landing guides" aria-pressed="true">Guides: On</button>
             </div>
         </div>
     </div>
@@ -495,15 +497,11 @@
     <div id="howto" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="howTitle">
         <div class="panel howto">
             <h2 id="howTitle">How to Play</h2>
-            <p>Dodge falling bombs and their blasts for 5 one-minute waves. When the final timer ends, survive the remaining blasts. Catch airdrops for extra lives.</p>
-            <p>Each wave drops one giant bomb at a random moment — twice as big, faster, and it costs two lives. Level 5 drops a second randomized giant bomb.</p>
-            <p>Soldiers enter from both sides, walk toward you, and shoot. Jump to dodge bullets. A bomb blast kills them. Contact or a bullet costs a life.</p>
-            <p>Level 4 adds a third soldier from a random side. Level 5 sends two synchronized pairs, plus one extra soldier from a random side at a random time.</p>
-            <p>Pulsing rings mark each bomb's blast zone. Giant bombs use a wider double ring. The ring grows brighter as impact approaches. Tiny strikes against the distant city are atmosphere only.</p>
-            <p>Keyboard: <kbd>←</kbd> <kbd>→</kbd> or <kbd>A</kbd> <kbd>D</kbd> to move; <kbd>Space</kbd> <kbd>W</kbd> or <kbd>↑</kbd> to jump.<br>Mouse: move the pointer to steer; click the playfield or JUMP to jump.<br>Touch: drag to steer; swipe up or tap JUMP to jump.</p>
-            <p>Hold the jump key, mouse button, or JUMP for a slightly higher, longer jump over soldiers. Move toward the soldier as you jump. On touch, you can also swipe up and keep your finger down, or steer with one finger while holding JUMP with another.</p>
-            <p>Click or tap menu buttons. With a keyboard, use <kbd>Tab</kbd> to select a button and <kbd>Enter</kbd> or <kbd>Space</kbd> to activate it.</p>
-            <p><kbd>Esc</kbd> or <kbd>P</kbd> pauses. YouTube mute controls the sound. FX: Auto follows your device's reduced-motion preference; Full and Reduced override it.</p>
+            <p>Survive 5 waves. Dodge bombs and blasts.</p>
+            <p>Jump over soldiers and bullets. Catch airdrops for extra lives.</p>
+            <p id="howControls">Move the mouse to steer. Click the playfield to jump.</p>
+            <p>Hold jump to go a little farther.</p>
+            <p id="howPause">Click PAUSE to open the menu.</p>
             <div class="btn-row">
                 <button class="primary" id="howCloseBtn" type="button" aria-label="Close how to play">Close</button>
             </div>
@@ -518,7 +516,9 @@
                 <button class="primary" id="resumeBtn" type="button">Resume</button>
                 <button id="restartBtn" type="button">Restart</button>
                 <button id="pauseHowBtn" type="button">How to Play</button>
+                <button id="pauseControlsBtn" type="button" aria-label="Control mode: Auto">Controls: AUTO</button>
                 <button id="pauseFxBtn" type="button">FX: Auto</button>
+                <button id="pauseGuidesBtn" type="button" aria-label="Bomb landing guides" aria-pressed="true">Guides: On</button>
             </div>
         </div>
     </div>
@@ -553,6 +553,9 @@
         const bestLine = document.getElementById('bestLine');
         const endStats = document.getElementById('endStats');
         const fxButtons = [document.getElementById('fxBtn'), document.getElementById('pauseFxBtn')];
+        const guideButtons = [document.getElementById('guidesBtn'), document.getElementById('pauseGuidesBtn')];
+        const controlButtons = [document.getElementById('controlsBtn'), document.getElementById('pauseControlsBtn')];
+        const CONTROL_MODES = ['auto', 'mouse', 'keyboard', 'touch'];
 
         const screens = {
             loading: document.getElementById('loading'),
@@ -611,8 +614,10 @@
         let gameReadySent = false;
         let firstFrameSent = false;
         let saveLoaded = false;
-        let save = { v: 2, best: 0, bestLevel: 1, seenHowTo: false, effects: 'auto' };
+        let save = { v: 2, best: 0, bestLevel: 1, seenHowTo: false, effects: 'auto', bombGuides: true, controls: 'auto' };
         let pendingSave = false;
+        let lastControlInput = window.matchMedia && window.matchMedia('(pointer: coarse)').matches ? 'touch' : 'mouse';
+        const mouseIntent = { x: null, y: null };
 
         let viewW = 0, viewH = 0, dpr = 1;
         let worldW = 360, worldH = 640;
@@ -670,6 +675,11 @@
         const jumpInput = { sources: new Set(), pointerId: null };
         const tutorial = { active: false, step: 0, startX: 0 };
         const scenery = { rear: [], far: [], mid: [], roofs: [], masonry: [], clouds: [], smoke: [], smokeSites: [], blueprint: null };
+        // Four scenery-only supports, ten spans (including offscreen runs), 130 cable nodes.
+        // A pole has at most three hinged pieces; none participate in gameplay collisions.
+        const utility = { poles: [], anchors: [], wires: [], time: 0, accumulator: 0 };
+        const UTILITY_HEIGHT = 2.5;
+        const WIRE_NODES = 13;
         let animationFrameId = 0;
 
         const sprites = {
@@ -686,8 +696,7 @@
                 screens[k].classList.toggle('hidden', k !== name);
             });
             hudEl.classList.toggle('hidden', name !== 'play' && name !== 'pause');
-            pauseBtn.classList.toggle('hidden', name !== 'play');
-            if (jumpBtn) jumpBtn.classList.toggle('hidden', name !== 'play');
+            syncControlsUI();
             if (name !== 'play') bannerEl.classList.add('hidden');
 
             if (name === 'play') {
@@ -742,6 +751,65 @@
             persistSave();
         }
 
+        function syncGuidesUI() {
+            guideButtons.forEach((button) => {
+                button.textContent = 'Guides: ' + (save.bombGuides ? 'On' : 'Off');
+                button.setAttribute('aria-pressed', String(save.bombGuides));
+            });
+        }
+
+        function toggleBombGuides() {
+            save.bombGuides = !save.bombGuides;
+            syncGuidesUI();
+            renderTutorialHint();
+            persistSave();
+        }
+
+        function activeControlMode() {
+            return save.controls === 'auto' ? lastControlInput : save.controls;
+        }
+
+        function syncControlsUI() {
+            const mode = activeControlMode();
+            controlButtons.forEach((button) => {
+                button.textContent = 'Controls: ' + save.controls.toUpperCase();
+                button.setAttribute('aria-label', 'Control mode: ' + save.controls + (save.controls === 'auto' ? ', using ' + mode : '') + '. Activate to change.');
+                button.title = save.controls === 'auto' ? 'Automatically follows mouse, keyboard, or touch input' : 'Use ' + mode + ' for gameplay';
+            });
+            document.body.dataset.controls = mode;
+            jumpBtn.classList.toggle('hidden', screen !== 'play' || mode !== 'touch');
+            pauseBtn.classList.toggle('hidden', screen !== 'play' || mode === 'keyboard');
+            document.getElementById('howControls').textContent = {
+                mouse: 'Move the mouse to steer. Click the playfield to jump.',
+                keyboard: 'Move with A/D or Left/Right. Jump with Space, W, or Up.',
+                touch: 'Drag to move. Swipe up or tap JUMP to jump.'
+            }[mode];
+            document.getElementById('howPause').textContent = mode === 'keyboard'
+                ? 'Press Esc or P to pause and open the menu.'
+                : (mode === 'touch' ? 'Tap' : 'Click') + ' PAUSE to open the menu.';
+            renderTutorialHint();
+        }
+
+        function cycleControls() {
+            clearInput();
+            save.controls = CONTROL_MODES[(CONTROL_MODES.indexOf(save.controls) + 1) % CONTROL_MODES.length];
+            syncControlsUI();
+            persistSave();
+        }
+
+        function noteControlInput(mode) {
+            const previous = activeControlMode();
+            lastControlInput = mode;
+            if (save.controls !== 'auto' || previous === mode) return;
+            // Changing input devices must not leave movement, pointer capture, or a held jump active.
+            clearInput();
+            syncControlsUI();
+        }
+
+        function acceptsControlInput(mode) {
+            return activeControlMode() === mode;
+        }
+
         function beginTutorial() {
             tutorial.active = !save.seenHowTo;
             tutorial.step = 0;
@@ -761,10 +829,11 @@
         }
 
         function renderTutorialHint() {
+            const mode = activeControlMode();
             const hints = [
-                'Move: A / D, arrow keys, or drag the pointer',
-                'Jump: Space / W / Up, click, swipe up, or tap Jump. Hold for extra distance.',
-                'Watch the ground marker and leave the blast zone',
+                { mouse: 'Move the mouse to steer', keyboard: 'Move: A / D or Left / Right', touch: 'Drag to move' }[mode],
+                { mouse: 'Click to jump; hold for extra distance', keyboard: 'Jump: Space / W / Up. Hold for extra distance.', touch: 'Swipe up or tap JUMP. Hold for extra distance.' }[mode],
+                save.bombGuides ? 'Watch the ground marker and leave the blast zone' : 'Keep moving to avoid falling bombs and their blasts',
                 'Catch the airdrop to gain one life'
             ];
             const visible = tutorial.active && screen === 'play' && hints[tutorial.step];
@@ -876,7 +945,8 @@
             return { buildings: buildings };
         }
 
-        function buildingRoofOffset(building, hitX) {
+        function buildingRoofOffset(building, hitX, stage) {
+            if (!stage) return 0;
             const points = [0, 0.17, 0.36, 0.54, 0.76, 1];
             const values = [
                 0.4 + building.leftBreak * 0.5,
@@ -907,7 +977,7 @@
                 return sample(a) + (sample(b) - sample(a)) * (stage - from);
             }
             const top = worldH - groundH - building.h;
-            return top + buildingRoofOffset(building, hitX);
+            return top + buildingRoofOffset(building, hitX, stage);
         }
 
         function makeRearSceneryLayer(levelIndex) {
@@ -930,7 +1000,7 @@
                 const bw = width * scale;
                 const bh = height * scale;
                 const top = baseY - bh;
-                const roofStep = Math.max(1, Math.min(4 * scale, bh * 0.035));
+                const roofStep = levelIndex === 0 ? 0 : Math.max(1, Math.min(4 * scale, bh * 0.035));
                 g.fillStyle = colors[levelIndex];
                 g.beginPath();
                 g.moveTo(px, baseY);
@@ -1000,7 +1070,7 @@
                     g.beginPath();
                     g.moveTo(x, baseY);
                     roofPoints.forEach((point) => {
-                        g.lineTo(x + bw * point, top + buildingRoofOffset(building, point) * scale);
+                        g.lineTo(x + bw * point, top + buildingRoofOffset(building, point, levelIndex) * scale);
                     });
                     g.lineTo(x + bw, baseY);
                     g.closePath();
@@ -1067,7 +1137,7 @@
                         for (let col = 1; col <= cols; col++) {
                             const visible = windowRnd() > 0.38;
                             const flicker = windowRnd();
-                            if (!visible) continue;
+                            if (!visible && levelIndex > 0) continue;
                             const wx = x + (col / (cols + 1)) * bw;
                             const wy = baseY - (row / (rows + 1)) * bh;
                             if (wy < top + bh * 0.035) continue;
@@ -1277,7 +1347,7 @@
                 g.moveTo(0, baseY);
                 let x = 0;
                 while (x <= c.width) {
-                    const baseRise = 4 + rnd() * 14;
+                    const baseRise = (4 + rnd() * 14) * (levelIndex === 0 ? 0.1 : 1);
                     const addedRuin = rnd() * 9 * destruction;
                     g.lineTo(x, baseY - (baseRise + addedRuin) * scale);
                     x += (8 + rnd() * 18) * scale;
@@ -1422,7 +1492,7 @@
             const baseY = worldH - groundH;
             const shortSide = Math.min(worldW, worldH);
             scenery.smokeSites.forEach((site, i) => {
-                const visibility = clamp(stage - i + 1, 0, 1) * (0.35 + stage * 0.1625);
+                const visibility = clamp(stage - i + 1, 0, 1) * (0.35 + stage * 0.1625) * clamp(stage, 0, 1);
                 if (!visibility) return;
                 const building = scenery.blueprint.buildings[site.building];
                 const xN = (building.x + building.w * site.sourceX) / worldW;
@@ -2231,7 +2301,9 @@
             save.bestLevel = Number(parsed.bestLevel) || 1;
             save.seenHowTo = !!parsed.seenHowTo;
             save.effects = ['auto', 'full', 'reduced'].includes(parsed.effects) ? parsed.effects : 'auto';
-            return parsed.v !== 2;
+            save.bombGuides = typeof parsed.bombGuides === 'boolean' ? parsed.bombGuides : true;
+            save.controls = CONTROL_MODES.includes(parsed.controls) ? parsed.controls : 'auto';
+            return parsed.v !== 2 || typeof parsed.bombGuides !== 'boolean' || !CONTROL_MODES.includes(parsed.controls);
         }
 
         async function loadCloudSave() {
@@ -2251,6 +2323,8 @@
             }
             saveLoaded = true;
             syncEffectsUI();
+            syncGuidesUI();
+            syncControlsUI();
             syncAtmosphere();
             if (needsMigration || pendingSave) persistSave();
         }
@@ -2266,7 +2340,9 @@
                 best: save.best | 0,
                 bestLevel: save.bestLevel | 0,
                 seenHowTo: !!save.seenHowTo,
-                effects: save.effects
+                effects: save.effects,
+                bombGuides: save.bombGuides,
+                controls: save.controls
             });
             if (yt.env()) {
                 try { ytgame.game.saveData(raw); } catch (err) { yt.call('health', 'logWarning'); }
@@ -2380,6 +2456,8 @@
                 scorchMarks.forEach((mark) => { mark.size *= blastScale; });
                 clouds.forEach((cloud) => { cloud.x *= xScale; cloud.y *= yScale; cloud.w *= yScale; cloud.h *= yScale; });
             }
+            if (!utility.poles.length) resetUtilityPoles();
+            else if (resized || oldPlayerH !== player.h) resizeUtilityWires(oldW, oldGround, oldPlayerH * UTILITY_HEIGHT);
             if (!clouds.length) seedClouds();
             if (!scenery.blueprint) buildSceneryCache();
             else if (resized) {
@@ -2482,6 +2560,7 @@
             enemies = [];
             bullets = [];
             floorDamage = [];
+            resetUtilityPoles();
             level = 1;
             configureEnemyWaves();
             timeLeft = LEVEL_TIME;
@@ -2522,6 +2601,499 @@
             seedClouds();
             syncAtmosphere();
             setBanner('', 0);
+        }
+
+        function utilityPoint(pole, side, out) {
+            const h = player.h * UTILITY_HEIGHT;
+            const part = pole.parts[pole.parts.length - 1];
+            const angle = part.angle;
+            const x = side * h * 22 / 256;
+            const y = -(240 / 256 - part.lo) * h;
+            out.x = pole.nx * worldW + part.x * h + Math.cos(angle) * x - Math.sin(angle) * y;
+            out.y = worldH - groundH + 3 + part.y * h + Math.sin(angle) * x + Math.cos(angle) * y;
+            return out;
+        }
+
+        function utilitySupport(id) {
+            return id < 0 ? utility.anchors[0] : id > 3 ? utility.anchors[1] : utility.poles[id];
+        }
+
+        function makeUtilityPart(pole, lo, hi, angle, mobile, direction) {
+            const part = { lo, hi, angle, mobile, direction, x: 0, y: -lo, velocity: mobile ? direction * 0.18 : 0,
+                settled: false, bounced: false, outline: [] };
+            const points = [[-4/256,hi],[4/256,hi],[-4/256,lo],[4/256,lo],
+                [-25/256,226/256],[25/256,226/256],[-25/256,239/256],[25/256,239/256]];
+            if (pole.id % 2) points.push([21/256,169/256],[21/256,200/256]);
+            for (const [x, height] of points) {
+                if (height < lo || height > hi) continue;
+                const length = height - lo;
+                part.outline.push({ x, length, radius: Math.hypot(x, length), phase: Math.atan2(x * direction, length) });
+            }
+            return part;
+        }
+
+        function positionUtilityParts(pole) {
+            let x = 0, y = -pole.lift;
+            for (const part of pole.parts) {
+                part.x = x; part.y = y;
+                x += Math.sin(part.angle) * (part.hi - part.lo);
+                y -= Math.cos(part.angle) * (part.hi - part.lo);
+            }
+            pole.angle = pole.parts[pole.parts.length - 1].angle;
+        }
+
+        function utilityContactAngle(part) {
+            let target = Math.PI;
+            const clearance = Math.max(0, -part.y);
+            for (const point of part.outline) {
+                if (clearance > point.radius || point.radius < 0.001) continue;
+                const contact = Math.acos(clamp(-clearance / point.radius, -1, 1)) - point.phase;
+                if (contact >= 0 && contact < target) target = contact;
+            }
+            return target * part.direction;
+        }
+
+        function resetUtilityPoles() {
+            const seed = Math.random() * 10000;
+            const order = [0, 1, 2, 3].sort((a, b) => crackNoise(seed, a) - crackNoise(seed, b));
+            utility.time = 0;
+            utility.accumulator = 0;
+            utility.poles = [0.12, 0.37, 0.63, 0.88].map((nx, id) => {
+                const rank = order.indexOf(id);
+                const p = {
+                    id, nx, seed: seed + id * 71, cosmetic: 0, structural: 0, fatigue: 0,
+                    deadline: rank < 3 ? 165 + rank * 60 + crackNoise(seed, id + 20) * 10 - 5 : Infinity,
+                    direction: id === 0 ? 1 : id === 3 ? -1 : (crackNoise(seed, id + 40) < 0.5 ? -1 : 1),
+                    angle: 0, state: 'standing', stage: 'intact', lift: 0, parts: [],
+                    baseBreak: Math.round((0.11 + crackNoise(seed, id + 55) * 0.14) * 256) / 256,
+                    middleBreak: Math.round((0.43 + crackNoise(seed, id + 65) * 0.19) * 256) / 256,
+                    cache: null, cacheDamage: -1
+                };
+                p.fracture = p.baseBreak;
+                p.parts.push(makeUtilityPart(p, 0, 1, 0, false, p.direction));
+                return p;
+            });
+            // These are attachment points beyond the viewport, not extra visible poles.
+            utility.anchors = [-0.2, 1.2].map((nx) => ({ nx, angle: 0, state: 'standing', parts: [{ lo: 0, hi: 1, x: 0, y: 0, angle: 0 }] }));
+            utility.wires = [];
+            for (let i = -1; i < 4; i++) {
+                for (const side of [-1, 1]) {
+                    const wire = {
+                        left: i, right: i + 1, side, seed: seed + i * 43 + side,
+                        a: { x: 0, y: 0 }, b: { x: 0, y: 0 },
+                        nodes: [], lengths: [], broken: -1, damage: 0, cosmetic: 0
+                    };
+                    utilityPoint(utilitySupport(i), side, wire.a);
+                    utilityPoint(utilitySupport(i + 1), side, wire.b);
+                    const sag = utilityWireSag(wire);
+                    for (let j = 0; j < WIRE_NODES; j++) {
+                        const u = j / (WIRE_NODES - 1);
+                        const x = wire.a.x + (wire.b.x - wire.a.x) * u;
+                        const y = wire.a.y + sag * 4 * u * (1 - u);
+                        wire.nodes.push({ x, y, px: x, py: y });
+                    }
+                    utilityWireLengths(wire);
+                    utility.wires.push(wire);
+                }
+            }
+        }
+
+        function utilityLowestPoint(pole) {
+            let bottom = -Infinity;
+            for (const part of pole.parts) {
+                const s = Math.sin(part.angle), c = Math.cos(part.angle);
+                for (const point of part.outline) bottom = Math.max(bottom, part.y + s * point.x - c * point.length);
+            }
+            return bottom;
+        }
+
+        function utilityWireSag(wire) {
+            return Math.min(player.h * UTILITY_HEIGHT * (0.11 + (wire.side + 1) * 0.012), worldW * 0.045);
+        }
+
+        function utilityWireLengths(wire) {
+            const dx = (utilitySupport(wire.right).nx - utilitySupport(wire.left).nx) * worldW / (WIRE_NODES - 1);
+            const sag = utilityWireSag(wire);
+            for (let j = 0; j < WIRE_NODES - 1; j++) {
+                const u = j / (WIRE_NODES - 1), v = (j + 1) / (WIRE_NODES - 1);
+                wire.lengths[j] = Math.hypot(dx, sag * 4 * (v * (1 - v) - u * (1 - u)));
+            }
+            wire.restLength = wire.lengths.reduce((sum, length) => sum + length, 0);
+            wire.tensionLimit = wire.restLength * 1.06;
+            if (wire.broken >= 0) splitUtilityWireLength(wire);
+        }
+
+        function resizeUtilityWires(oldW, oldGround, oldHeight) {
+            const h = player.h * UTILITY_HEIGHT, scale = h / Math.max(1, oldHeight);
+            const gy = worldH - groundH + 3;
+            for (const wire of utility.wires) {
+                // Reflow span spacing but retain local bends, fracture positions, and velocity.
+                for (let j = 0; j < WIRE_NODES; j++) {
+                    const u = j / (WIRE_NODES - 1);
+                    const nx = utilitySupport(wire.left).nx * (1 - u) + utilitySupport(wire.right).nx * u;
+                    const oldX = nx * oldW + wire.side * oldHeight * 22 / 256;
+                    const newX = nx * worldW + wire.side * h * 22 / 256;
+                    const n = wire.nodes[j];
+                    n.x = newX + (n.x - oldX) * scale;
+                    n.px = newX + (n.px - oldX) * scale;
+                    n.y = gy + (n.y - oldGround - 3) * scale;
+                    n.py = gy + (n.py - oldGround - 3) * scale;
+                }
+                utilityWireLengths(wire);
+                pinUtilityWire(wire);
+                // An orientation change must not snap a previously attached span by itself.
+                wire.tensionLimit = Math.max(wire.tensionLimit, Math.hypot(wire.b.x - wire.a.x, wire.b.y - wire.a.y) * 1.002);
+            }
+            utility.accumulator = 0;
+        }
+
+        function utilityBurst(x, y, seed, sparks) {
+            const reduced = effectsAreReduced();
+            const count = reduced ? 3 : (sparks ? 6 : 10);
+            for (let i = 0; i < count; i++) {
+                const noise = crackNoise(seed, i + 2);
+                const speed = Math.min(140, player.h * 1.4);
+                pushParticle(x, y, (noise - 0.5) * speed, -(0.25 + crackNoise(seed, i + 20)) * speed,
+                    0.25 + noise * 0.4, 0.65, Math.max(1, player.h * (0.012 + noise * 0.014)),
+                    sparks && !reduced ? (i % 2 ? '#e4b767' : '#967341') : (i % 2 ? '#63513b' : '#928065'));
+            }
+        }
+
+        function toppleUtilityPole(pole, sourceX, requestedStage) {
+            const next = requestedStage || 'base';
+            if (pole.stage === 'ground' || pole.stage === next || (pole.stage === 'base' && next === 'middle')) return;
+            // Outer poles fall inward, keeping their ruined silhouettes in view on phones.
+            let direction = pole.direction;
+            if (pole.id > 0 && pole.id < 3 && sourceX != null) {
+                direction = pole.nx * worldW >= sourceX ? 1 : -1;
+            }
+            if (next === 'ground') {
+                // Release the last support at the foot; existing upper hinges and pieces survive.
+                const root = pole.parts[0];
+                const released = makeUtilityPart(pole, root.lo, root.hi, root.angle, true, direction);
+                pole.parts[0] = released;
+            } else {
+                const cut = next === 'middle' ? pole.middleBreak : pole.baseBreak;
+                const index = pole.parts.findIndex(part => part.lo < cut && part.hi > cut);
+                if (index < 0) return;
+                const old = pole.parts[index];
+                const lower = makeUtilityPart(pole, old.lo, cut, old.angle, old.mobile, old.direction);
+                const upper = makeUtilityPart(pole, cut, old.hi, old.angle, true, direction);
+                pole.parts.splice(index, 1, lower, upper);
+                pole.fracture = cut;
+            }
+            pole.structural = 1;
+            pole.state = 'falling';
+            pole.stage = next;
+            pole.cacheDamage = -1;
+            positionUtilityParts(pole);
+            const fracture = next === 'ground' ? pole.parts[0] : pole.parts.find(part => part.lo === pole.fracture);
+            utilityBurst((pole.nx * worldW) + fracture.x * player.h * UTILITY_HEIGHT,
+                worldH - groundH + 3 + fracture.y * player.h * UTILITY_HEIGHT, pole.seed + pole.parts.length, false);
+        }
+
+        function splitUtilityWireLength(wire) {
+            const half = wire.lengths[wire.broken] * 0.5;
+            wire.lengths[wire.broken - 1] += half;
+            wire.lengths[wire.broken + 1] += half;
+        }
+
+        function breakUtilityWire(wire, link) {
+            if (wire.broken >= 0) return;
+            wire.broken = clamp(link, 1, WIRE_NODES - 3);
+            const a = wire.nodes[wire.broken], b = wire.nodes[wire.broken + 1];
+            // Two ends start at the same cut; retain both halves of the severed segment.
+            const x = (a.x + b.x) * 0.5, y = (a.y + b.y) * 0.5;
+            a.x = a.px = b.x = b.px = x;
+            a.y = a.py = b.y = b.py = y;
+            splitUtilityWireLength(wire);
+            if (!effectsAreReduced()) {
+                const recoil = Math.min(3, player.h * 0.035);
+                a.px = a.x + recoil; b.px = b.x - recoil;
+            }
+            utilityBurst((a.x + b.x) / 2, (a.y + b.y) / 2, wire.seed, true);
+        }
+
+        function pointSegmentDistance(x, y, ax, ay, bx, by) {
+            const dx = bx - ax, dy = by - ay;
+            const u = clamp(((x - ax) * dx + (y - ay) * dy) / Math.max(0.001, dx * dx + dy * dy), 0, 1);
+            return Math.hypot(x - ax - u * dx, y - ay - u * dy);
+        }
+
+        function damageUtilityPoles(x, y, radius, giant) {
+            const h = player.h * UTILITY_HEIGHT, gy = worldH - groundH + 3;
+            for (const pole of utility.poles) {
+                const bx = pole.nx * worldW;
+                let distance = Infinity;
+                for (const part of pole.parts) {
+                    const ax = bx + part.x * h, ay = gy + part.y * h;
+                    distance = Math.min(distance, pointSegmentDistance(x, y, ax, ay,
+                        ax + Math.sin(part.angle) * (part.hi - part.lo) * h,
+                        ay - Math.cos(part.angle) * (part.hi - part.lo) * h));
+                }
+                if (distance > radius) continue;
+                const influence = 1 - distance / radius;
+                pole.cosmetic = Math.min(1, pole.cosmetic + (giant ? 0.55 : 0.065) * (0.25 + influence));
+                if (giant && pole.stage !== 'ground') {
+                    const wasWeakened = pole.structural;
+                    pole.structural = Math.min(1, pole.structural + 0.3 + influence * 0.9);
+                    if (influence >= 0.2 || wasWeakened + 0.3 + influence * 0.9 >= 1) {
+                        const directBase = Math.abs(x - bx) <= radius * 0.28 && Math.abs(y - gy) <= radius * 0.75;
+                        const next = pole.stage === 'base' ? 'ground' : pole.stage === 'middle' ? 'base' : directBase ? 'base' : 'middle';
+                        toppleUtilityPole(pole, x, next);
+                    }
+                }
+            }
+            for (const wire of utility.wires) {
+                let distance = Infinity, closest = 5;
+                for (let j = 0; j < WIRE_NODES - 1; j++) {
+                    if (j === wire.broken) continue;
+                    const a = wire.nodes[j], b = wire.nodes[j + 1];
+                    const d = pointSegmentDistance(x, y, a.x, a.y, b.x, b.y);
+                    if (d < distance) { distance = d; closest = j; }
+                }
+                if (distance > radius) continue;
+                const influence = 1 - distance / radius;
+                wire.cosmetic = Math.min(1, wire.cosmetic + (giant ? 0.5 : 0.08) * influence);
+                if (giant && wire.broken < 0) {
+                    wire.damage += 0.3 + influence * 0.9;
+                    if (wire.damage >= 1) breakUtilityWire(wire, closest);
+                }
+            }
+        }
+
+        function pinUtilityWire(wire) {
+            utilityPoint(utilitySupport(wire.left), wire.side, wire.a);
+            utilityPoint(utilitySupport(wire.right), wire.side, wire.b);
+            const first = wire.nodes[0], last = wire.nodes[WIRE_NODES - 1];
+            first.x = first.px = wire.a.x; first.y = first.py = wire.a.y;
+            last.x = last.px = wire.b.x; last.y = last.py = wire.b.y;
+        }
+
+        function stepUtilityWire(wire, dt, reduced) {
+            const gy = worldH - groundH + 3, h = player.h * UTILITY_HEIGHT;
+            const left = utilitySupport(wire.left), right = utilitySupport(wire.right);
+            pinUtilityWire(wire);
+            // Tension only breaks a line when a support is actually falling, never from wind or resize.
+            if (wire.broken < 0 && (left.state !== 'standing' || right.state !== 'standing') &&
+                Math.hypot(wire.b.x - wire.a.x, wire.b.y - wire.a.y) > wire.tensionLimit) {
+                breakUtilityWire(wire, 4 + Math.floor(crackNoise(wire.seed, 19) * 4));
+            }
+            // A rotating crossarm also tears its insulator connection, even on a slack span.
+            if (wire.broken < 0) {
+                const tearAngle = 1.05 + crackNoise(wire.seed, 27) * 0.35;
+                if (left.state !== 'standing' && Math.abs(left.angle) > tearAngle) breakUtilityWire(wire, 1);
+                else if (right.state !== 'standing' && Math.abs(right.angle) > tearAngle) breakUtilityWire(wire, WIRE_NODES - 3);
+            }
+            const wind = reduced ? 0 : Math.sin(utility.time * 1.35 + wire.seed) * h * 0.05;
+            // A tiny change in projected slack makes depth-wise wind sway readable in 2D.
+            // Rendering and scenery damage use the same nodes; gameplay blast radii are unchanged.
+            const sway = !reduced && wire.broken < 0 && left.state === 'standing' && right.state === 'standing'
+                ? Math.sin(utility.time * 0.95 + wire.seed) * Math.min(3, h * 0.012) : 0;
+            const spanWidth = (right.nx - left.nx) * worldW;
+            const windScale = 1 + 8 * (2 * utilityWireSag(wire) * sway + sway * sway) / (3 * Math.max(1, spanWidth) * wire.restLength);
+            for (let j = 1; j < WIRE_NODES - 1; j++) {
+                const n = wire.nodes[j];
+                const x = n.x, y = n.y;
+                n.x += (n.x - n.px) * (reduced ? 0.93 : 0.985) + wind * dt * dt;
+                n.y += (n.y - n.py) * (reduced ? 0.93 : 0.985) + h * 2.1 * dt * dt;
+                n.px = x; n.py = y;
+            }
+            for (let pass = 0; pass < 8; pass++) {
+                for (let j = 0; j < WIRE_NODES - 1; j++) {
+                    if (j === wire.broken) continue;
+                    const a = wire.nodes[j], b = wire.nodes[j + 1];
+                    const dx = b.x - a.x, dy = b.y - a.y;
+                    const distance = Math.max(0.001, Math.hypot(dx, dy));
+                    const correction = (distance - wire.lengths[j] * windScale) / distance;
+                    const aFree = j !== 0, bFree = j + 1 !== WIRE_NODES - 1;
+                    const factor = aFree && bFree ? 0.5 : 1;
+                    if (aFree) { a.x += dx * correction * factor; a.y += dy * correction * factor; }
+                    if (bFree) { b.x -= dx * correction * factor; b.y -= dy * correction * factor; }
+                }
+                for (let j = 1; j < WIRE_NODES - 1; j++) {
+                    const n = wire.nodes[j];
+                    if (n.y >= gy) {
+                        n.y = gy; n.py = gy;
+                        n.px += (n.x - n.px) * 0.5;
+                    }
+                }
+            }
+        }
+
+        function updateUtilityPoles(dt, playing) {
+            if (ended || platformPaused) return;
+            const reduced = effectsAreReduced();
+            if (playing) {
+                for (const pole of utility.poles) {
+                    const age = Number.isFinite(pole.deadline) ? clamp((runTime - 60) / (pole.deadline - 60), 0, 1) : clamp((runTime - 60) / 240, 0, 1) * 0.65;
+                    pole.fatigue = Math.max(pole.fatigue, age * age);
+                    if ((pole.stage === 'intact' || pole.stage === 'middle') && runTime >= pole.deadline) toppleUtilityPole(pole);
+                }
+            }
+            utility.accumulator = Math.min(0.05, utility.accumulator + dt);
+            const step = 1 / 120;
+            while (utility.accumulator >= step) {
+                utility.accumulator -= step;
+                utility.time += step;
+                for (const pole of utility.poles) {
+                    if (pole.stage === 'intact') {
+                        const strain = Math.max(pole.fatigue, pole.structural);
+                        const lean = strain * strain * 0.13 * pole.direction;
+                        const sway = reduced ? 0 : Math.sin(utility.time * 1.25 + pole.seed) * 0.002 * strain;
+                        pole.parts[0].angle += (lean + sway - pole.parts[0].angle) * Math.min(1, step * 2);
+                    }
+                    pole.lift = pole.stage === 'ground' ? pole.lift + (1/64 - pole.lift) * step * 7 : Math.abs(Math.sin(pole.parts[0].angle)) / 64;
+                    let anchorX = 0, anchorY = -pole.lift, moving = false;
+                    for (const part of pole.parts) {
+                        part.x = anchorX; part.y = anchorY;
+                        if (part.mobile) {
+                            const target = utilityContactAngle(part);
+                            if (part.settled && (target - part.angle) * part.direction > 0.04) {
+                                part.settled = false; part.velocity = part.direction * 0.1;
+                            }
+                            if (part.settled) part.angle = target;
+                            else {
+                                part.velocity += part.direction * (0.45 + Math.abs(Math.sin(part.angle)) * 3.8) * step;
+                                part.angle += part.velocity * step;
+                                if ((part.angle - target) * part.direction >= 0) {
+                                    part.angle = target;
+                                    if (!part.bounced) {
+                                        part.bounced = true;
+                                        if (Math.abs(target) < Math.PI - 0.01) utilityBurst(pole.nx * worldW + (part.x + Math.sin(part.angle) * (part.hi - part.lo)) * player.h * UTILITY_HEIGHT,
+                                            worldH - groundH + 3, pole.seed + part.lo * 256, false);
+                                        if (!reduced) part.velocity *= -0.1;
+                                    } else part.velocity = 0;
+                                    if (reduced || part.velocity === 0) { part.settled = true; part.velocity = 0; }
+                                }
+                            }
+                            if (!part.settled) moving = true;
+                        }
+                        anchorX += Math.sin(part.angle) * (part.hi - part.lo);
+                        anchorY -= Math.cos(part.angle) * (part.hi - part.lo);
+                    }
+                    pole.angle = pole.parts[pole.parts.length - 1].angle;
+                    pole.state = pole.stage === 'intact' ? 'standing' : moving ? 'falling' : 'fallen';
+                }
+                for (const wire of utility.wires) stepUtilityWire(wire, step, reduced);
+            }
+        }
+
+        function bakeUtilityPole(pole, damage) {
+            const c = pole.cache || document.createElement('canvas');
+            c.width = 64; c.height = 256;
+            const g = c.getContext('2d');
+            g.fillStyle = '#201d17'; g.fillRect(28, 0, 8, 256);
+            g.fillStyle = '#534733'; g.fillRect(29, 0, 3, 254);
+            g.fillStyle = '#79613e'; g.fillRect(29, 3, 1, 246);
+            for (let j = 0; j < 38; j++) {
+                g.fillStyle = j % 3 ? '#302a20' : '#615039';
+                g.fillRect(30 + Math.floor(crackNoise(pole.seed, j) * 5), Math.floor(crackNoise(pole.seed, j + 70) * 249), 1, 3 + j % 7);
+            }
+            // Crossarm, diagonal steel braces, and ribbed ceramic insulators.
+            g.strokeStyle = '#35392e'; g.lineWidth = 2;
+            g.beginPath(); g.moveTo(12, 26); g.lineTo(32, 45); g.lineTo(52, 26); g.stroke();
+            g.fillStyle = '#201e18'; g.fillRect(7, 24, 50, 6);
+            g.fillStyle = '#88704b'; g.fillRect(8, 24, 48, 1);
+            g.fillStyle = '#544a35'; g.fillRect(8, 26, 48, 2);
+            for (const x of [10, 54]) {
+                g.fillStyle = '#30342a'; g.fillRect(x - 2, 16, 4, 9);
+                g.fillStyle = '#9a9975';
+                for (let j = 0; j < 3; j++) g.fillRect(x - 3, 17 + j * 3, 6, 1);
+                g.fillStyle = '#d0ba85'; g.fillRect(x - 1, 16, 2, 1);
+            }
+            if (pole.id % 2) {
+                g.fillStyle = '#262a23'; g.fillRect(36, 56, 17, 31);
+                g.fillStyle = '#565b47'; g.fillRect(38, 59, 13, 25);
+                g.fillStyle = '#919075'; g.fillRect(38, 59, 2, 23);
+                g.fillStyle = '#2c3027';
+                for (let j = 0; j < 5; j++) g.fillRect(42, 62 + j * 4, 7, 1);
+                g.fillStyle = '#9e8243'; g.fillRect(41, 70, 5, 5);
+                g.fillStyle = '#25271f'; g.fillRect(43, 71, 1, 3);
+                g.strokeStyle = '#2b2a22'; g.lineWidth = 1;
+                g.beginPath(); g.moveTo(49, 56); g.lineTo(49, 40); g.lineTo(54, 22); g.stroke();
+            }
+            g.fillStyle = '#3e4135';
+            for (const y of [47, 96, 208, 240]) g.fillRect(28, y, 8, 3);
+            g.fillStyle = '#b09b65'; g.fillRect(30, 104, 4, 5);
+            g.fillStyle = '#2b2820'; g.fillRect(31, 105, 1, 3);
+            for (let j = 0; j < damage * 3; j++) {
+                const y = 42 + Math.floor(crackNoise(pole.seed, 150 + j) * 207);
+                const x = 29 + Math.floor(crackNoise(pole.seed, 200 + j) * 5);
+                g.fillStyle = j % 3 ? '#151610' : '#a08756';
+                g.fillRect(x, y, 1, 3 + j % 5);
+                g.fillRect(x - 1, y + 3, 1, 3);
+            }
+            if (damage > 1) {
+                for (const cut of [pole.baseBreak, pole.middleBreak]) {
+                    const y = (1 - cut) * 256;
+                    g.strokeStyle = '#11140f'; g.lineWidth = damage > 5 ? 2 : 1;
+                    g.beginPath(); g.moveTo(28, y + 4); g.lineTo(32, y - damage); g.lineTo(31, y - damage * 2); g.lineTo(35, y - damage * 3); g.stroke();
+                    g.fillStyle = 'rgba(13,15,11,' + damage * 0.025 + ')'; g.fillRect(28, y - 12, 8, 24);
+                }
+            }
+            pole.cache = c; pole.cacheDamage = damage;
+        }
+
+        function drawUtilityPoles() {
+            const h = player.h * UTILITY_HEIGHT, gy = worldH - groundH + 3;
+            ctx.save();
+            ctx.lineCap = 'round';
+            for (const wire of utility.wires) {
+                ctx.lineWidth = Math.max(1, Math.min(2.2, h * 0.006));
+                ctx.strokeStyle = '#25291f';
+                ctx.beginPath();
+                for (let j = 0; j < WIRE_NODES; j++) {
+                    const n = wire.nodes[j];
+                    if (j === 0 || j === wire.broken + 1) ctx.moveTo(n.x, n.y); else ctx.lineTo(n.x, n.y);
+                }
+                ctx.stroke();
+                ctx.strokeStyle = 'rgba(177,154,101,0.27)';
+                ctx.lineWidth = Math.max(0.5, h * 0.0018);
+                ctx.stroke();
+                if (wire.cosmetic > 0) {
+                    ctx.strokeStyle = '#5a503a';
+                    for (let j = 2; j < WIRE_NODES - 1; j += 3) {
+                        if (crackNoise(wire.seed, j) > wire.cosmetic) continue;
+                        const n = wire.nodes[j];
+                        ctx.beginPath(); ctx.moveTo(n.x, n.y); ctx.lineTo(n.x + 2, n.y + h * 0.014); ctx.stroke();
+                    }
+                }
+            }
+            for (const pole of utility.poles) {
+                const damage = Math.min(8, Math.ceil(Math.max(pole.cosmetic, pole.fatigue * 0.9, pole.structural) * 8));
+                if (damage !== pole.cacheDamage) bakeUtilityPole(pole, damage);
+                const x = pole.nx * worldW;
+                ctx.fillStyle = 'rgba(12,14,10,0.3)';
+                ctx.beginPath(); ctx.ellipse(x, gy + 1, h * 0.046, Math.max(2, h * 0.012), 0, 0, Math.PI * 2); ctx.fill();
+                for (const part of pole.parts) {
+                    const ax = x + part.x * h, ay = gy + part.y * h, length = part.hi - part.lo;
+                    if (part.mobile) {
+                        ctx.strokeStyle = 'rgba(12,14,10,' + (0.12 + Math.abs(Math.sin(part.angle)) * 0.18) + ')';
+                        ctx.lineWidth = h * 0.025;
+                        ctx.beginPath(); ctx.moveTo(ax, gy); ctx.lineTo(ax + Math.sin(part.angle) * length * h, gy); ctx.stroke();
+                    }
+                    ctx.save();
+                    ctx.translate(ax, ay); ctx.rotate(part.angle);
+                    ctx.drawImage(pole.cache, 0, (1 - part.hi) * 256, 64, length * 256, -h / 8, -length * h, h / 4, length * h);
+                    // Seeded splinter profiles distinguish both fracture heights and both faces.
+                    if (part.lo > 0 || pole.stage === 'ground') drawUtilitySplinters(pole, part.lo, h, 0, 1);
+                    if (part.hi < 1) drawUtilitySplinters(pole, part.hi, h, -length * h, -1);
+                    ctx.restore();
+                }
+            }
+            ctx.restore();
+        }
+
+        function drawUtilitySplinters(pole, cut, height, y, side) {
+            ctx.fillStyle = side > 0 ? '#9c8152' : '#806d49';
+            ctx.beginPath(); ctx.moveTo(-height / 64, y);
+            for (let j = 0; j < 5; j++) {
+                const reach = (0.004 + crackNoise(pole.seed + cut * 256, j + 83) * 0.021) * height;
+                ctx.lineTo((-0.016 + j * 0.008) * height, y + side * reach);
+                ctx.lineTo((-0.012 + j * 0.008) * height, y - side * height * 0.004);
+            }
+            ctx.lineTo(height / 64, y); ctx.fill();
         }
 
         function bombBaseSize() {
@@ -2587,6 +3159,7 @@
         }
 
         function drawBombTelegraphs(groundY) {
+            if (!save.bombGuides) return;
             ctx.save();
             bombs.forEach((bomb) => {
                 const progress = bombFallProgress(bomb, groundY);
@@ -2843,6 +3416,7 @@
 
         function explode(x, y, fromGround, giant) {
             const r = bombBlastRadius(giant);
+            damageUtilityPoles(x, y, r, giant);
             const life = giant ? 0.75 : 0.45;
             explosions.push({ x: x, y: y, r: r, t: life, max: life, dmg: giant ? 2 : 1 });
             beep('explosion', giant, x);
@@ -2984,6 +3558,7 @@
                 driftClouds(dt * ambientRate);
                 updateAtmosphere(dt * ambientRate);
                 updateCityBombardment(dt * ambientRate);
+                updateUtilityPoles(dt * ambientRate, screen === 'play');
                 if (backgroundBlend < 1) {
                     backgroundBlend = Math.min(1, backgroundBlend + dt * ambientRate / BACKGROUND_FADE_TIME);
                 }
@@ -3338,7 +3913,7 @@
             const smog = visualStage / (MAX_LEVEL - 1);
             // The sun rises slightly from 9 to 11 a.m., staying above the skyline even through the final smog.
             const sunAlpha = 0.34 - smog * 0.22;
-            const sunX = worldW * (0.76 - smog * 0.08);
+            const sunX = worldW * (0.24 + smog * 0.08);
             const sunY = worldH * (0.2 - smog * 0.07);
             const sunRadius = clamp(Math.min(worldW, worldH) * 0.032, 10, 30);
             const sunGlow = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunRadius * 2.8);
@@ -3402,6 +3977,35 @@
                 ctx.fillRect(0, 0, worldW, worldH);
             }
 
+            // Ground and utility scenery precede all gameplay objects and warning overlays.
+            const gy = worldH - groundH;
+            const terrain = ctx.createLinearGradient(0, gy, 0, worldH);
+            terrain.addColorStop(0, mixColor(GROUND[from], GROUND[to], fade));
+            terrain.addColorStop(1, '#18120d');
+            ctx.fillStyle = terrain;
+            ctx.fillRect(-24, gy, worldW + 48, groundH + 24);
+            ctx.fillStyle = mixColor(GROUND_EDGE[from], GROUND_EDGE[to], fade);
+            ctx.fillRect(0, gy, worldW, 6);
+            for (let x = 0; x < worldW; x += 13) {
+                const grain = crackNoise(x + 71, 8);
+                ctx.fillStyle = grain > 0.5 ? 'rgba(164,123,74,0.15)' : 'rgba(9,8,6,0.28)';
+                ctx.fillRect(x, gy + 9 + grain * (groundH - 15), 2 + grain * 8, 1 + grain * 3);
+                ctx.fillStyle = 'rgba(194,147,89,0.15)';
+                ctx.fillRect(x + 3, gy + 5 + crackNoise(x, 10) * 5, 3 + grain * 5, 1);
+            }
+            ctx.strokeStyle = '#1a140e';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, gy + 4);
+            for (let x = 0; x < worldW; x += 16) {
+                ctx.lineTo(x + 8, gy + crackNoise(x, 14) * 3 - 1);
+                ctx.lineTo(x + 16, gy + 3);
+            }
+            ctx.stroke();
+            drawScorches(gy);
+            drawFloorDamage(gy);
+            drawUtilityPoles();
+
             explosions.forEach((e) => {
                 const k = e.t / e.max;
                 const rad = e.r * (1.15 - k * 0.15);
@@ -3442,32 +4046,6 @@
                 drawSprite(sprites.bomb, b.x, b.y, b.w, b.h);
             });
 
-            const gy = worldH - groundH;
-            const terrain = ctx.createLinearGradient(0, gy, 0, worldH);
-            terrain.addColorStop(0, mixColor(GROUND[from], GROUND[to], fade));
-            terrain.addColorStop(1, '#18120d');
-            ctx.fillStyle = terrain;
-            ctx.fillRect(-24, gy, worldW + 48, groundH + 24);
-            ctx.fillStyle = mixColor(GROUND_EDGE[from], GROUND_EDGE[to], fade);
-            ctx.fillRect(0, gy, worldW, 6);
-            for (let x = 0; x < worldW; x += 13) {
-                const grain = crackNoise(x + 71, 8);
-                ctx.fillStyle = grain > 0.5 ? 'rgba(164,123,74,0.15)' : 'rgba(9,8,6,0.28)';
-                ctx.fillRect(x, gy + 9 + grain * (groundH - 15), 2 + grain * 8, 1 + grain * 3);
-                ctx.fillStyle = 'rgba(194,147,89,0.15)';
-                ctx.fillRect(x + 3, gy + 5 + crackNoise(x, 10) * 5, 3 + grain * 5, 1);
-            }
-            ctx.strokeStyle = '#1a140e';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(0, gy + 4);
-            for (let x = 0; x < worldW; x += 16) {
-                ctx.lineTo(x + 8, gy + crackNoise(x, 14) * 3 - 1);
-                ctx.lineTo(x + 16, gy + 3);
-            }
-            ctx.stroke();
-            drawScorches(gy);
-            drawFloorDamage(gy);
             drawBombTelegraphs(gy);
 
             enemies.forEach((en) => {
@@ -3646,8 +4224,23 @@
             pointer.hover = true;
         }
 
+        // Menus always accept every input, even when gameplay uses an explicitly selected mode.
+        document.addEventListener('pointerdown', (e) => {
+            if (e.pointerType === 'mouse' && e.button !== 0) return;
+            mouseIntent.x = e.clientX;
+            mouseIntent.y = e.clientY;
+            noteControlInput(e.pointerType === 'mouse' ? 'mouse' : 'touch');
+        }, true);
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey || e.metaKey || e.altKey || !['Tab', 'Enter', ' ', 'Escape', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'a', 'd', 'w', 'p'].includes(e.key.length === 1 ? e.key.toLowerCase() : e.key)) return;
+            mouseIntent.x = null;
+            mouseIntent.y = null;
+            noteControlInput('keyboard');
+        }, true);
+
         canvas.addEventListener('pointerdown', (e) => {
             if (screen !== 'play' || userPaused || platformPaused || ended) return;
+            if (!acceptsControlInput(e.pointerType === 'mouse' ? 'mouse' : 'touch')) return;
             if (pointer.id !== null || (e.pointerType === 'mouse' && e.button !== 0)) return;
             pointer.id = e.pointerId;
             pointer.swiped = e.pointerType === 'mouse';
@@ -3661,6 +4254,17 @@
             }
         });
         canvas.addEventListener('pointermove', (e) => {
+            if (e.pointerType === 'mouse' && save.controls === 'auto' && !keys.left && !keys.right && !jumpInput.sources.size && !pointer.down) {
+                if (mouseIntent.x === null) {
+                    mouseIntent.x = e.clientX;
+                    mouseIntent.y = e.clientY;
+                } else if (Math.hypot(e.clientX - mouseIntent.x, e.clientY - mouseIntent.y) >= 8) {
+                    noteControlInput('mouse');
+                    mouseIntent.x = e.clientX;
+                    mouseIntent.y = e.clientY;
+                }
+            }
+            if (!acceptsControlInput(e.pointerType === 'mouse' ? 'mouse' : 'touch')) return;
             if (pointer.id !== null && pointer.id !== e.pointerId) return;
             if (e.pointerType !== 'mouse' && pointer.id === null) return;
             onPointer(e, pointer.id === e.pointerId && pointer.down);
@@ -3686,6 +4290,7 @@
             const onButton = e.target && e.target.closest && e.target.closest('button');
             if (onButton && (e.key === 'Enter' || e.key === ' ')) return;
             if (e.key === 'Escape') {
+                if (e.repeat) return;
                 if (screen === 'howto') {
                     showScreen(howtoReturn === 'pause' ? 'pause' : 'menu');
                 } else if (screen === 'pause') {
@@ -3698,16 +4303,17 @@
             if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === ' ' || e.key === 'ArrowUp') {
                 if (screen === 'play') e.preventDefault();
             }
-            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || /^[ad]$/i.test(e.key)) pointer.hover = false;
-            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = true;
-            if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = true;
-            if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
-                if (screen === 'play') {
+            if (screen === 'play' && !userPaused && !platformPaused && !ended && acceptsControlInput('keyboard')) {
+                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || /^[ad]$/i.test(e.key)) pointer.hover = false;
+                if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = true;
+                if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = true;
+                if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
                     if (!e.repeat) setJumpHeld('key:' + e.key.toLowerCase(), true);
                     return;
                 }
             }
             if (e.key === 'p' || e.key === 'P') {
+                if (e.repeat) return;
                 if (screen === 'play') requestPause();
                 else if (screen === 'pause') requestResume();
             }
@@ -3723,6 +4329,7 @@
             }
         });
         window.addEventListener('keyup', (e) => {
+            if (e.key === ' ' || e.key === 'Enter') setJumpHeld('buttonKey:' + e.key, false);
             if (e.key === ' ' || e.key === 'ArrowUp' || e.key.toLowerCase() === 'w') setJumpHeld('key:' + e.key.toLowerCase(), false);
             if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = false;
             if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = false;
@@ -3756,6 +4363,8 @@
         fxButtons.forEach((button) => {
             if (button) button.addEventListener('click', cycleEffects);
         });
+        guideButtons.forEach((button) => button.addEventListener('click', toggleBombGuides));
+        controlButtons.forEach((button) => button.addEventListener('click', cycleControls));
         pauseBtn.addEventListener('click', requestPause);
         jumpBtn.addEventListener('pointerdown', (e) => {
             if (screen !== 'play' || userPaused || platformPaused || ended || jumpInput.pointerId !== null) return;
