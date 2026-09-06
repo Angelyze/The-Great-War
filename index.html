@@ -334,25 +334,6 @@
             text-shadow: 3px 3px 0 #3a1a00, 0 0 12px rgba(255, 144, 0, 0.5);
             max-width: 90vw;
         }
-        #tutorialHint {
-            position: fixed;
-            left: 50%;
-            top: var(--hint-top, 38%);
-            transform: translate(-50%, -50%);
-            z-index: 27;
-            width: min(88vw, 460px);
-            padding: 10px 14px;
-            border: 2px solid var(--amber-hot);
-            background: rgba(10, 7, 4, 0.9);
-            color: #ffe0a6;
-            text-align: center;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            font-size: clamp(12px, 2.8vw, 16px);
-            line-height: 1.35;
-            pointer-events: none;
-            box-shadow: 0 0 20px rgba(255, 144, 0, 0.2);
-        }
         .result-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -439,18 +420,147 @@
             #pauseBtn { right: calc(7px + var(--safe-right)); min-width: 70px; }
             #jumpBtn { left: calc(7px + var(--safe-left)); }
             #banner { font-size: clamp(16px, 5vh, 24px); }
-            #tutorialHint {
-                top: var(--hint-top, 38%);
-                bottom: auto;
-                transform: translate(-50%, -50%);
-                width: min(72vw, 520px);
-                padding: 7px 10px;
-            }
             .result-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 7px 0 10px; }
             .result-stat { padding: 5px 4px; }
         }
         @media (min-width: 900px) and (orientation: landscape) {
             .panel { width: min(70vw, 640px); }
+        }
+        /* Compact, touch-friendly chrome; the desktop HUD keeps its original styling. */
+        body[data-ui="compact"] #hud {
+            top: calc(8px + var(--safe-top));
+            left: calc(12px + var(--safe-left));
+            right: calc(12px + var(--safe-right));
+            margin: 0 auto;
+            max-width: 560px;
+            grid-template-columns: auto minmax(0, 1fr);
+            grid-template-areas: "timer status" "level level";
+            align-items: stretch;
+            gap: 0;
+            border: 1px solid rgba(255,144,0,0.65);
+            background: rgba(12,9,5,0.8);
+            box-shadow: 1px 2px 0 rgba(20,12,4,0.55);
+            text-shadow: 1px 1px 0 #000;
+        }
+        body[data-ui="compact"] .hud-block {
+            min-height: 30px;
+            padding: 5px 8px;
+            border: 0;
+            background: none;
+            box-shadow: none;
+            font-size: 12px;
+            letter-spacing: 0.035em;
+        }
+        body[data-ui="compact"] #hudLeft {
+            width: 100%;
+            max-width: none;
+            min-height: 24px;
+            justify-self: stretch;
+            display: block;
+            border-top: 1px solid rgba(255,144,0,0.23);
+            color: #d4b27d;
+            font-size: 12px;
+            text-align: center;
+            white-space: normal;
+        }
+        body[data-ui="compact"] #hudMid { justify-self: stretch; color: #ffd28d; font-size: 14px; }
+        body[data-ui="compact"] #hudRight {
+            justify-self: stretch;
+            justify-content: space-between;
+            gap: 8px;
+            border-left: 1px solid rgba(255,144,0,0.23);
+        }
+        body[data-ui="compact"] .hud-gap { display: none; }
+        body[data-ui="compact"] #livesIcons { gap: 2px; flex-shrink: 0; }
+        body[data-ui="compact"] #livesIcons canvas { width: 14px; height: 14px; }
+        body[data-ui="compact"] #scoreHud { white-space: nowrap; font-size: 12px; }
+        body[data-ui="compact"] #scoreHud::before {
+            content: 'SCORE';
+            margin-right: 5px;
+            color: #a78b61;
+            font-size: 9px;
+            letter-spacing: 0.06em;
+        }
+        body[data-ui="compact"] #banner {
+            position: absolute;
+            top: calc(100% + 6px);
+            width: max-content;
+            max-width: 100%;
+            padding: 5px 9px;
+            border-bottom: 1px solid rgba(255,144,0,0.5);
+            background: rgba(12,9,5,0.74);
+            color: #f2c685;
+            font-size: 12px;
+            line-height: 1.3;
+            letter-spacing: 0.035em;
+            text-transform: none;
+            text-shadow: 1px 1px 0 #000;
+        }
+        body[data-ui="compact"] #jumpBtn,
+        body[data-ui="compact"] #pauseBtn {
+            bottom: calc(8px + var(--safe-bottom));
+            min-height: 48px;
+            padding: 0 10px;
+            border-width: 2px;
+            border-color: rgba(255,144,0,0.72);
+            background: rgba(17,12,7,0.74);
+            box-shadow: 1px 2px 0 rgba(20,12,4,0.5);
+            font-size: 12px;
+            letter-spacing: 0.06em;
+        }
+        body[data-ui="compact"] #jumpBtn {
+            left: calc(12px + var(--safe-left));
+            width: 64px;
+            height: 56px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        body[data-ui="compact"] #jumpBtn::before {
+            content: '';
+            width: 9px;
+            height: 9px;
+            margin-top: 5px;
+            border-top: 2px solid currentColor;
+            border-left: 2px solid currentColor;
+            transform: rotate(45deg);
+        }
+        body[data-ui="compact"] #pauseBtn {
+            right: calc(12px + var(--safe-right));
+            min-width: 68px;
+            height: 48px;
+            border-width: 1px;
+        }
+        body[data-ui="compact"] #jumpBtn.held,
+        body[data-ui="compact"] #jumpBtn:active,
+        body[data-ui="compact"] #jumpBtn:focus-visible,
+        body[data-ui="compact"] #pauseBtn:active,
+        body[data-ui="compact"] #pauseBtn:focus-visible {
+            background: var(--amber-hot);
+            color: var(--ink);
+        }
+        @media (orientation: landscape) and (min-width: 560px) {
+            body[data-ui="compact"] #hud {
+                grid-template-columns: minmax(0, 1.15fr) auto minmax(0, 1fr);
+                grid-template-areas: "level timer status";
+            }
+            body[data-ui="compact"] #hudLeft {
+                display: flex;
+                align-items: center;
+                border-top: 0;
+                text-align: left;
+            }
+            body[data-ui="compact"] #hudMid { border-left: 1px solid rgba(255,144,0,0.23); }
+        }
+        @media (max-width: 359px) {
+            body[data-ui="compact"] #hud {
+                left: calc(8px + var(--safe-left));
+                right: calc(8px + var(--safe-right));
+            }
+            body[data-ui="compact"] #scoreHud::before { content: none; }
+            body[data-ui="compact"] .hud-block { padding-right: 6px; padding-left: 6px; }
         }
     </style>
 </head>
@@ -459,13 +569,12 @@
     <div id="scanlines"></div>
     <div id="vignette"></div>
     <div id="flashOverlay"></div>
-    <div id="banner" class="hidden" role="status" aria-live="polite" aria-atomic="true"></div>
-    <div id="tutorialHint" class="hidden" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <div id="hud" class="hidden" role="group" aria-label="Current game status" aria-live="off">
         <div class="hud-block" id="hudLeft">LVL 1</div>
         <div class="hud-block" id="hudMid">1:00</div>
-        <div class="hud-block" id="hudRight"><span id="livesIcons"></span>&nbsp;<span id="scoreHud">0</span></div>
+        <div class="hud-block" id="hudRight"><span id="livesIcons"></span><span class="hud-gap" aria-hidden="true">&nbsp;</span><span id="scoreHud">0</span></div>
+        <div id="banner" class="hidden" role="status" aria-live="polite" aria-atomic="true"></div>
     </div>
     <button id="pauseBtn" class="hidden" type="button" aria-label="Pause game" aria-keyshortcuts="Escape P">PAUSE</button>
     <button id="jumpBtn" class="hidden" type="button" aria-label="Jump; hold for a longer jump" aria-keyshortcuts="Space ArrowUp W" title="Tap to jump; hold for a longer jump">JUMP</button>
@@ -542,7 +651,6 @@
         const ctx = canvas.getContext('2d');
         const flashEl = document.getElementById('flashOverlay');
         const bannerEl = document.getElementById('banner');
-        const tutorialHintEl = document.getElementById('tutorialHint');
         const hudEl = document.getElementById('hud');
         const hudLeft = document.getElementById('hudLeft');
         const hudMid = document.getElementById('hudMid');
@@ -673,7 +781,6 @@
         const keys = { left: false, right: false };
         const pointer = { down: false, x: 0, hover: false, startY: 0, id: null, swiped: false };
         const jumpInput = { sources: new Set(), pointerId: null };
-        const tutorial = { active: false, step: 0, startX: 0 };
         const scenery = { rear: [], far: [], mid: [], roofs: [], masonry: [], clouds: [], smoke: [], smokeSites: [], blueprint: null };
         // Four scenery-only supports, ten spans (including offscreen runs), 130 cable nodes.
         // A pole has at most three hinged pieces; none participate in gameplay collisions.
@@ -713,7 +820,6 @@
                 const focusTarget = focusId && document.getElementById(focusId);
                 if (focusTarget) focusTarget.focus({ preventScroll: true });
             }
-            renderTutorialHint();
             const activeAudio = (name === 'play' || name === 'end') && !platformPaused;
             setAudioActive(activeAudio);
             if (name === 'play' && activeAudio) startAmbience();
@@ -761,7 +867,6 @@
         function toggleBombGuides() {
             save.bombGuides = !save.bombGuides;
             syncGuidesUI();
-            renderTutorialHint();
             persistSave();
         }
 
@@ -787,7 +892,7 @@
             document.getElementById('howPause').textContent = mode === 'keyboard'
                 ? 'Press Esc or P to pause and open the menu.'
                 : (mode === 'touch' ? 'Tap' : 'Click') + ' PAUSE to open the menu.';
-            renderTutorialHint();
+            syncResponsiveUI();
         }
 
         function cycleControls() {
@@ -810,35 +915,10 @@
             return activeControlMode() === mode;
         }
 
-        function beginTutorial() {
-            tutorial.active = !save.seenHowTo;
-            tutorial.step = 0;
-            tutorial.startX = player.x;
-            renderTutorialHint();
-        }
-
-        function advanceTutorial(step) {
-            if (!tutorial.active || tutorial.step !== step) return;
-            tutorial.step += 1;
-            if (tutorial.step >= 4) {
-                tutorial.active = false;
-                save.seenHowTo = true;
-                persistSave();
-            }
-            renderTutorialHint();
-        }
-
-        function renderTutorialHint() {
-            const mode = activeControlMode();
-            const hints = [
-                { mouse: 'Move the mouse to steer', keyboard: 'Move: A / D or Left / Right', touch: 'Drag to move' }[mode],
-                { mouse: 'Click to jump; hold for extra distance', keyboard: 'Jump: Space / W / Up. Hold for extra distance.', touch: 'Swipe up or tap JUMP. Hold for extra distance.' }[mode],
-                save.bombGuides ? 'Watch the ground marker and leave the blast zone' : 'Keep moving to avoid falling bombs and their blasts',
-                'Catch the airdrop to gain one life'
-            ];
-            const visible = tutorial.active && screen === 'play' && hints[tutorial.step];
-            tutorialHintEl.textContent = visible ? hints[tutorial.step] : '';
-            tutorialHintEl.classList.toggle('hidden', !visible);
+        function syncResponsiveUI() {
+            const coarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+            const compact = worldW < 560 || worldH <= 500 || coarse || activeControlMode() === 'touch';
+            document.body.dataset.ui = compact ? 'compact' : 'desktop';
         }
 
         function flashScreen(sourceX) {
@@ -2382,7 +2462,7 @@
             worldW = w;
             worldH = h;
             document.body.style.setProperty('--banner-top', Math.max(100, h * 0.22) + 'px');
-            document.body.style.setProperty('--hint-top', Math.max(158, h * 0.36) + 'px');
+            syncResponsiveUI();
             const unit = Math.min(worldW, worldH);
             player.w = Math.round(clamp(worldH * 0.052, 26, clamp(unit * 0.1, 44, 96)));
             const spr = sprites.soldier;
@@ -2401,7 +2481,6 @@
             player.vy *= yScale;
             player.jumpAirSpeed = longJumpSpeed();
             player.lastX = player.x;
-            tutorial.startX *= xScale;
 
             // Reflow live objects without resetting their health, timers, or remaining fall time.
             if (resized) {
@@ -3395,7 +3474,6 @@
             player.jumpHoldLeft = jumpInput.sources.size ? JUMP_HOLD_TIME : 0;
             player.jumpCharge = 0;
             player.jumpAirSpeed = longJumpSpeed();
-            advanceTutorial(1);
         }
 
         function airdropSize() { return Math.round(player.w * 1.28); }
@@ -3510,7 +3588,6 @@
             ensureAudio();
             resetRun();
             showScreen('play');
-            beginTutorial();
             setBanner('Level 1 — ' + LEVEL_NAMES[0], 2);
             lastTime = 0;
         }
@@ -3659,9 +3736,6 @@
             } else {
                 player.moving = false;
             }
-            if (tutorial.active && tutorial.step === 0 && Math.abs(player.x - tutorial.startX) > player.w * 0.8) {
-                advanceTutorial(0);
-            }
             if (player.moving && player.grounded && !effectsAreReduced()) {
                 runDustTimer -= dt;
                 if (runDustTimer <= 0) {
@@ -3727,7 +3801,6 @@
                 if (b.y + b.h >= groundY) {
                     addFloorDamage(b.x + b.w / 2, b.giant);
                     explode(b.x + b.w / 2, groundY, true, b.giant);
-                    advanceTutorial(2);
                     return false;
                 }
                 return true;
@@ -3816,7 +3889,6 @@
                     }
                     beep('pickup', false, a.x + a.w / 2);
                     setBanner('Airdrop! +1 life', 1.6);
-                    advanceTutorial(3);
                     return false;
                 }
                 return a.y < worldH;
@@ -4340,8 +4412,6 @@
         document.getElementById('howBtn').addEventListener('click', () => {
             howtoReturn = 'menu';
             save.seenHowTo = true;
-            tutorial.active = false;
-            renderTutorialHint();
             persistSave();
             showScreen('howto');
         });
@@ -4414,6 +4484,9 @@
         window.addEventListener('resize', layout);
         window.addEventListener('orientationchange', () => setTimeout(layout, 60));
         if (window.matchMedia) {
+            const pointerQuery = window.matchMedia('(pointer: coarse)');
+            if (pointerQuery.addEventListener) pointerQuery.addEventListener('change', syncResponsiveUI);
+            else if (pointerQuery.addListener) pointerQuery.addListener(syncResponsiveUI);
             const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
             const onMotionPreference = () => {
                 if (save.effects === 'auto') {

@@ -78,7 +78,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     }
     assert.equal(await evaluate('document.body.dataset.screen'), 'menu');
     assert.deepEqual(await evaluate('sdkCalls.slice(0,2)'), ['firstFrameReady', 'gameReady']);
-    await game('cancelAnimationFrame(animationFrameId); animationFrameId=0; save.seenHowTo=true;');
+    await game('cancelAnimationFrame(animationFrameId); animationFrameId=0;');
     const sizes = [[225,800],[360,800],[800,360],[450,800],[600,800],[720,720],[1280,720],[1680,720],[1920,540],[3840,2160]];
     let checks = 0;
     async function resize(w, h) {
@@ -89,6 +89,11 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
         await game('draw()');
         const { data } = await call('Page.captureScreenshot', { format: 'png' });
         fs.writeFileSync(path.join(artifactDir, name + '.png'), Buffer.from(data, 'base64'));
+    }
+    if (process.argv.includes('--ui-only')) {
+        await require('./mobile-ui.cjs')({ assert, game, evaluate, call, screenshot, errors, source });
+        console.log('Screenshots: '+artifactDir);
+        return;
     }
     for (const [w, h] of (process.argv.includes('--stages-only') ? [] : sizes)) {
         await resize(w, h);
