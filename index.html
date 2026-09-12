@@ -428,11 +428,11 @@
         }
         /* Compact, touch-friendly chrome; the desktop HUD keeps its original styling. */
         body[data-ui="compact"] #hud {
-            top: calc(8px + var(--safe-top));
-            left: calc(12px + var(--safe-left));
-            right: calc(12px + var(--safe-right));
+            top: calc(6px + var(--safe-top));
+            left: calc(8px + var(--safe-left));
+            right: calc(8px + var(--safe-right));
             margin: 0 auto;
-            max-width: 560px;
+            max-width: none;
             grid-template-columns: auto minmax(0, 1fr);
             grid-template-areas: "timer status" "level level";
             align-items: stretch;
@@ -562,6 +562,37 @@
             body[data-ui="compact"] #scoreHud::before { content: none; }
             body[data-ui="compact"] .hud-block { padding-right: 6px; padding-left: 6px; }
         }
+        body { --stick-size: clamp(80px, 20vmin, 104px); }
+        #joystick {
+            position: fixed;
+            right: calc(12px + var(--safe-right));
+            bottom: calc(8px + var(--safe-bottom));
+            width: var(--stick-size);
+            height: var(--stick-size);
+            z-index: 26;
+            border: 2px solid rgba(255,144,0,0.6);
+            border-radius: 50%;
+            background: rgba(17,12,7,0.45);
+            touch-action: none;
+            color: #e8b368;
+        }
+        #joystick::before { content: '‹     ›'; position: absolute; inset: 0; display: grid; place-items: center; font-size: 22px; white-space: pre; opacity: 0.6; }
+        #joystick::after { content: '↑'; position: absolute; top: 3px; left: 0; width: 100%; text-align: center; font-size: 16px; opacity: 0.7; }
+        #joystickKnob {
+            position: absolute; left: 50%; top: 50%; width: 34%; height: 34%;
+            border: 2px solid #d58c26; border-radius: 50%; background: rgba(68,43,13,0.85);
+            transform: translate(calc(-50% + var(--stick-x, 0px)), calc(-50% + var(--stick-y, 0px)));
+            pointer-events: none;
+        }
+        #joystick.active { border-color: var(--amber-hot); }
+        #joystick.active #joystickKnob { background: #b5731c; }
+        body[data-stick="left"] #joystick { left: calc(12px + var(--safe-left)); right: auto; }
+        body[data-controls="touch"][data-stick="left"] #jumpBtn { bottom: calc(var(--stick-size) + 20px + var(--safe-bottom)); }
+        body[data-controls="touch"][data-stick="right"] #pauseBtn { bottom: calc(var(--stick-size) + 20px + var(--safe-bottom)); }
+        @media (orientation: landscape) and (min-width: 560px) {
+            body[data-controls="touch"] #hud { right: calc(84px + var(--safe-right)); }
+            body[data-controls="touch"] #pauseBtn { top: calc(6px + var(--safe-top)); right: calc(8px + var(--safe-right)); bottom: auto; }
+        }
     </style>
 </head>
 <body>
@@ -578,6 +609,7 @@
     </div>
     <button id="pauseBtn" class="hidden" type="button" aria-label="Pause game" aria-keyshortcuts="Escape P">PAUSE</button>
     <button id="jumpBtn" class="hidden" type="button" aria-label="Jump; hold for a longer jump" aria-keyshortcuts="Space ArrowUp W" title="Tap to jump; hold for a longer jump">JUMP</button>
+    <div id="joystick" class="hidden" role="group" aria-label="Movement joystick: drag left or right to move; push up to jump and hold for a longer jump"><span id="joystickKnob"></span></div>
 
     <div id="loading" class="overlay" role="status" aria-live="polite" aria-label="Loading The Great War">
         <div class="panel">
@@ -597,6 +629,7 @@
                 <button class="primary" id="playBtn" type="button">Play</button>
                 <button id="howBtn" type="button">How to Play</button>
                 <button id="controlsBtn" type="button" aria-label="Control mode: Auto">Controls: AUTO</button>
+                <button id="stickSideBtn" type="button">Joystick: Right</button>
                 <button id="fxBtn" type="button">FX: Auto</button>
                 <button id="guidesBtn" type="button" aria-label="Bomb landing guides" aria-pressed="true">Guides: On</button>
             </div>
@@ -626,6 +659,7 @@
                 <button id="restartBtn" type="button">Restart</button>
                 <button id="pauseHowBtn" type="button">How to Play</button>
                 <button id="pauseControlsBtn" type="button" aria-label="Control mode: Auto">Controls: AUTO</button>
+                <button id="pauseStickSideBtn" type="button">Joystick: Right</button>
                 <button id="pauseFxBtn" type="button">FX: Auto</button>
                 <button id="pauseGuidesBtn" type="button" aria-label="Bomb landing guides" aria-pressed="true">Guides: On</button>
             </div>
@@ -658,6 +692,9 @@
         const scoreHud = document.getElementById('scoreHud');
         const pauseBtn = document.getElementById('pauseBtn');
         const jumpBtn = document.getElementById('jumpBtn');
+        const joystickEl = document.getElementById('joystick');
+        const stickSideButtons = [document.getElementById('stickSideBtn'), document.getElementById('pauseStickSideBtn')];
+        const joystick = { id: null, x: 0, centerX: 0, centerY: 0, radius: 1, up: false };
         const bestLine = document.getElementById('bestLine');
         const endStats = document.getElementById('endStats');
         const fxButtons = [document.getElementById('fxBtn'), document.getElementById('pauseFxBtn')];
@@ -722,7 +759,7 @@
         let gameReadySent = false;
         let firstFrameSent = false;
         let saveLoaded = false;
-        let save = { v: 2, best: 0, bestLevel: 1, seenHowTo: false, effects: 'auto', bombGuides: true, controls: 'auto' };
+        let save = { v: 2, best: 0, bestLevel: 1, seenHowTo: false, effects: 'auto', bombGuides: true, controls: 'auto', joystickSide: 'right' };
         let pendingSave = false;
         let lastControlInput = window.matchMedia && window.matchMedia('(pointer: coarse)').matches ? 'touch' : 'mouse';
         const mouseIntent = { x: null, y: null };
@@ -884,10 +921,16 @@
             document.body.dataset.controls = mode;
             jumpBtn.classList.toggle('hidden', screen !== 'play' || mode !== 'touch');
             pauseBtn.classList.toggle('hidden', screen !== 'play' || mode === 'keyboard');
+            joystickEl.classList.toggle('hidden', screen !== 'play' || mode !== 'touch');
+            document.body.dataset.stick = save.joystickSide;
+            stickSideButtons.forEach(button => {
+                button.textContent = 'Joystick: ' + (save.joystickSide === 'left' ? 'Left' : 'Right');
+                button.setAttribute('aria-label', button.textContent + '. Activate to switch sides.');
+            });
             document.getElementById('howControls').textContent = {
                 mouse: 'Move the mouse to steer. Click the playfield to jump.',
                 keyboard: 'Move with A/D or Left/Right. Jump with Space, W, or Up.',
-                touch: 'Drag to move. Swipe up or tap JUMP to jump.'
+                touch: 'Use the joystick to move left or right. Push it up to jump, or tap JUMP. You can also drag on the playfield.'
             }[mode];
             document.getElementById('howPause').textContent = mode === 'keyboard'
                 ? 'Press Esc or P to pause and open the menu.'
@@ -2383,7 +2426,8 @@
             save.effects = ['auto', 'full', 'reduced'].includes(parsed.effects) ? parsed.effects : 'auto';
             save.bombGuides = typeof parsed.bombGuides === 'boolean' ? parsed.bombGuides : true;
             save.controls = CONTROL_MODES.includes(parsed.controls) ? parsed.controls : 'auto';
-            return parsed.v !== 2 || typeof parsed.bombGuides !== 'boolean' || !CONTROL_MODES.includes(parsed.controls);
+            save.joystickSide = parsed.joystickSide === 'left' ? 'left' : 'right';
+            return parsed.v !== 2 || typeof parsed.bombGuides !== 'boolean' || !CONTROL_MODES.includes(parsed.controls) || !['left','right'].includes(parsed.joystickSide);
         }
 
         async function loadCloudSave() {
@@ -2422,7 +2466,8 @@
                 seenHowTo: !!save.seenHowTo,
                 effects: save.effects,
                 bombGuides: save.bombGuides,
-                controls: save.controls
+                controls: save.controls,
+                joystickSide: save.joystickSide
             });
             if (yt.env()) {
                 try { ytgame.game.saveData(raw); } catch (err) { yt.call('health', 'logWarning'); }
@@ -3695,6 +3740,7 @@
             const step = speed * dt;
             if (keys.left) player.x -= step;
             else if (keys.right) player.x += step;
+            else if (joystick.id !== null) player.x += joystick.x * step;
             else if (pointer.down || pointer.hover) {
                 const target = pointer.x - player.w / 2;
                 const delta = target - player.x;
@@ -4273,6 +4319,7 @@
         }
 
         function clearInput() {
+            releaseJoystick();
             const canvasPointerId = pointer.id;
             const jumpPointerId = jumpInput.pointerId;
             keys.left = false;
@@ -4326,7 +4373,7 @@
             }
         });
         canvas.addEventListener('pointermove', (e) => {
-            if (e.pointerType === 'mouse' && save.controls === 'auto' && !keys.left && !keys.right && !jumpInput.sources.size && !pointer.down) {
+            if (e.pointerType === 'mouse' && save.controls === 'auto' && joystick.id === null && !keys.left && !keys.right && !jumpInput.sources.size && !pointer.down) {
                 if (mouseIntent.x === null) {
                     mouseIntent.x = e.clientX;
                     mouseIntent.y = e.clientY;
@@ -4436,6 +4483,56 @@
         guideButtons.forEach((button) => button.addEventListener('click', toggleBombGuides));
         controlButtons.forEach((button) => button.addEventListener('click', cycleControls));
         pauseBtn.addEventListener('click', requestPause);
+        stickSideButtons.forEach(button => button.addEventListener('click', () => {
+            clearInput();
+            save.joystickSide = save.joystickSide === 'right' ? 'left' : 'right';
+            syncControlsUI();
+            persistSave();
+        }));
+
+        function releaseJoystick(e) {
+            if (e && e.pointerId !== joystick.id) return;
+            const id = joystick.id;
+            joystick.id = null; joystick.x = 0; joystick.up = false;
+            setJumpHeld('joystick', false);
+            joystickEl.classList.remove('active');
+            joystickEl.style.setProperty('--stick-x', '0px');
+            joystickEl.style.setProperty('--stick-y', '0px');
+            if (id !== null && joystickEl.hasPointerCapture(id)) joystickEl.releasePointerCapture(id);
+        }
+
+        function moveJoystick(e) {
+            if (joystick.id !== e.pointerId) return;
+            e.preventDefault();
+            const dx = (e.clientX - joystick.centerX) / joystick.radius;
+            const dy = (e.clientY - joystick.centerY) / joystick.radius;
+            const magnitude = Math.max(1, Math.hypot(dx, dy));
+            joystickEl.style.setProperty('--stick-x', (dx / magnitude * joystick.radius) + 'px');
+            joystickEl.style.setProperty('--stick-y', (dy / magnitude * joystick.radius) + 'px');
+            // Digital left/right preserves the game's existing run speed, with a neutral dead zone.
+            joystick.x = Math.abs(dx) >= 0.25 ? Math.sign(dx) : 0;
+            const up = joystick.up ? dy < -0.25 : dy < -0.5;
+            if (up !== joystick.up) { joystick.up = up; setJumpHeld('joystick', up); }
+        }
+
+        joystickEl.addEventListener('pointerdown', e => {
+            if (screen !== 'play' || userPaused || platformPaused || ended || !acceptsControlInput('touch') || joystick.id !== null) return;
+            if (e.pointerType === 'mouse' && e.button !== 0) return;
+            e.preventDefault(); e.stopPropagation();
+            const bounds = joystickEl.getBoundingClientRect();
+            joystick.id = e.pointerId;
+            joystick.centerX = bounds.x + bounds.width / 2;
+            joystick.centerY = bounds.y + bounds.height / 2;
+            joystick.radius = bounds.width * 0.3;
+            joystickEl.setPointerCapture(e.pointerId);
+            joystickEl.classList.add('active');
+            moveJoystick(e);
+        });
+        joystickEl.addEventListener('pointermove', moveJoystick);
+        joystickEl.addEventListener('pointerup', releaseJoystick);
+        joystickEl.addEventListener('pointercancel', releaseJoystick);
+        joystickEl.addEventListener('lostpointercapture', releaseJoystick);
+
         jumpBtn.addEventListener('pointerdown', (e) => {
             if (screen !== 'play' || userPaused || platformPaused || ended || jumpInput.pointerId !== null) return;
             if (e.pointerType === 'mouse' && e.button !== 0) return;

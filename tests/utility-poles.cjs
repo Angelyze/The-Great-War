@@ -15,7 +15,7 @@ for (const match of source.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)
 assert(Buffer.byteLength(source) < 512 * 1024, 'single-file size');
 const artifactDir = fs.mkdtempSync(path.join(os.tmpdir(), 'great-war-poles-'));
 const fixture = `<script>window.sdkCalls=[]; window.sdkCallbacks={}; window.ytgame={IN_PLAYABLES_ENV:true,
- game:{firstFrameReady(){sdkCalls.push('firstFrameReady')},gameReady(){sdkCalls.push('gameReady')},loadData:async()=>'',saveData:async()=>{}},
+ game:{firstFrameReady(){sdkCalls.push('firstFrameReady')},gameReady(){sdkCalls.push('gameReady')},loadData:async()=>'',saveData:async(raw)=>{window.savedData=raw}},
  system:{isAudioEnabled(){return false},onAudioEnabledChange(f){sdkCallbacks.mute=f},onPause(f){sdkCallbacks.pause=f},onResume(f){sdkCallbacks.resume=f}},
  engagement:{sendScore(){}},health:{logError(){sdkCalls.push('error')},logWarning(){}},
 };</script>`;
@@ -92,6 +92,11 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     }
     if (process.argv.includes('--ui-only')) {
         await require('./mobile-ui.cjs')({ assert, game, evaluate, call, screenshot, errors, source });
+        console.log('Screenshots: '+artifactDir);
+        return;
+    }
+    if (process.argv.includes('--joystick-only')) {
+        await require('./joystick.cjs')({ assert, game, evaluate, call, screenshot, errors });
         console.log('Screenshots: '+artifactDir);
         return;
     }

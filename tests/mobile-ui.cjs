@@ -49,7 +49,7 @@ module.exports = async function ({ assert, game, evaluate, call, screenshot, err
         }
         await game("requestPause();document.getElementById('pauseHowBtn').click();");
         assert.equal(await evaluate('document.body.dataset.screen'),'howto');
-        assert(await game("document.getElementById('howControls').textContent.includes('Drag to move')"));
+        assert(await game("document.getElementById('howControls').textContent.includes('joystick')"));
         await game("document.getElementById('howCloseBtn').click();requestResume();");
         assert.equal(await evaluate('document.body.dataset.screen'),'play');
     }
