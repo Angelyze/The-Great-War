@@ -428,7 +428,7 @@
         }
         /* Compact, touch-friendly chrome; the desktop HUD keeps its original styling. */
         body[data-ui="compact"] #hud {
-            top: 0;
+            top: 8px;
             left: calc(8px + var(--safe-left));
             right: calc(8px + var(--safe-right));
             margin: 0 auto;
@@ -498,7 +498,7 @@
         }
         body[data-ui="compact"] #jumpBtn,
         body[data-ui="compact"] #pauseBtn {
-            bottom: calc(8px + var(--safe-bottom));
+            bottom: 8px;
             min-height: 48px;
             padding: 0 10px;
             border-width: 2px;
@@ -509,7 +509,7 @@
             letter-spacing: 0.06em;
         }
         body[data-ui="compact"] #jumpBtn {
-            left: calc(12px + var(--safe-left));
+            left: calc(8px + var(--safe-left));
             width: 64px;
             height: 56px;
             display: flex;
@@ -528,7 +528,7 @@
             transform: rotate(45deg);
         }
         body[data-ui="compact"] #pauseBtn {
-            right: calc(12px + var(--safe-right));
+            right: calc(8px + var(--safe-right));
             min-width: 68px;
             height: 48px;
             border-width: 1px;
@@ -565,8 +565,8 @@
         body { --stick-size: clamp(80px, 20vmin, 104px); }
         #joystick {
             position: fixed;
-            right: calc(12px + var(--safe-right));
-            bottom: calc(8px + var(--safe-bottom));
+            right: calc(8px + var(--safe-right));
+            bottom: 8px;
             width: var(--stick-size);
             height: var(--stick-size);
             z-index: 26;
@@ -586,12 +586,12 @@
         }
         #joystick.active { border-color: var(--amber-hot); }
         #joystick.active #joystickKnob { background: #b5731c; }
-        body[data-stick="left"] #joystick { left: calc(12px + var(--safe-left)); right: auto; }
-        body[data-controls="touch"][data-stick="left"] #jumpBtn { bottom: calc(var(--stick-size) + 20px + var(--safe-bottom)); }
-        body[data-controls="touch"][data-stick="right"] #pauseBtn { bottom: calc(var(--stick-size) + 20px + var(--safe-bottom)); }
+        body[data-stick="left"] #joystick { left: calc(8px + var(--safe-left)); right: auto; }
+        body[data-controls="touch"][data-stick="left"] #jumpBtn { bottom: calc(var(--stick-size) + 20px); }
+        body[data-controls="touch"][data-stick="right"] #pauseBtn { bottom: calc(var(--stick-size) + 20px); }
         @media (orientation: landscape) and (min-width: 560px) {
             body[data-controls="touch"] #hud { right: calc(84px + var(--safe-right)); }
-            body[data-controls="touch"] #pauseBtn { top: 0; right: calc(8px + var(--safe-right)); bottom: auto; }
+            body[data-controls="touch"] #pauseBtn { top: 8px; right: calc(8px + var(--safe-right)); bottom: auto; }
         }
     </style>
 </head>
@@ -4351,7 +4351,7 @@
             noteControlInput(e.pointerType === 'mouse' ? 'mouse' : 'touch');
         }, true);
         document.addEventListener('keydown', (e) => {
-            if (e.ctrlKey || e.metaKey || e.altKey || !['Tab', 'Enter', ' ', 'Escape', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'a', 'd', 'w', 'p'].includes(e.key.length === 1 ? e.key.toLowerCase() : e.key)) return;
+            if (e.ctrlKey || e.metaKey || e.altKey || !['Tab', 'Enter', ' ', 'Escape', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'a', 'd', 'w', 'p'].includes(e.key.length === 1 ? e.key.toLowerCase() : e.key)) return;
             mouseIntent.x = null;
             mouseIntent.y = null;
             noteControlInput('keyboard');
@@ -4396,9 +4396,47 @@
         canvas.addEventListener('lostpointercapture', (e) => { if (pointer.id === e.pointerId) clearInput(); });
         canvas.addEventListener('pointerleave', () => { if (!pointer.down) pointer.hover = false; });
 
+        function navigateMenu(e) {
+            if (!['menu', 'pause', 'howto', 'end'].includes(screen) || e.ctrlKey || e.metaKey || e.altKey) return false;
+            const navKeys = ['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'];
+            if (!navKeys.includes(e.key)) return false;
+            const buttons = Array.from(screens[screen].querySelectorAll('button:not(:disabled)'))
+                .filter(button => button.getClientRects().length && getComputedStyle(button).visibility !== 'hidden');
+            if (!buttons.length) return false;
+            e.preventDefault();
+            const current = buttons.indexOf(document.activeElement);
+            const backwards = e.key === 'ArrowUp' || e.key === 'ArrowLeft' || (e.key === 'Tab' && e.shiftKey);
+            let target = current < 0 ? (backwards ? buttons.length - 1 : 0) : (current + (backwards ? -1 : 1) + buttons.length) % buttons.length;
+            if (e.key === 'Home') target = 0;
+            else if (e.key === 'End') target = buttons.length - 1;
+            else if (current >= 0 && e.key.startsWith('Arrow')) {
+                // Follow the visual arrangement, including the two-column landscape menus.
+                const origin = buttons[current].getBoundingClientRect();
+                const horizontal = e.key === 'ArrowLeft' || e.key === 'ArrowRight';
+                let best = Infinity;
+                buttons.forEach((button, index) => {
+                    if (index === current) return;
+                    const rect = button.getBoundingClientRect();
+                    const dx = rect.x + rect.width / 2 - origin.x - origin.width / 2;
+                    const dy = rect.y + rect.height / 2 - origin.y - origin.height / 2;
+                    const forward = (horizontal ? dx : dy) * (backwards ? -1 : 1);
+                    const cross = Math.abs(horizontal ? dy : dx);
+                    const distance = forward + cross * 4;
+                    if (forward > 4 && distance < best) { best = distance; target = index; }
+                });
+            }
+            buttons[target].focus({ preventScroll: true });
+            buttons[target].scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+            return true;
+        }
+
         window.addEventListener('keydown', (e) => {
+            if (navigateMenu(e)) return;
             const onButton = e.target && e.target.closest && e.target.closest('button');
-            if (onButton && (e.key === 'Enter' || e.key === ' ')) return;
+            if (onButton && (e.key === 'Enter' || e.key === ' ')) {
+                if (e.repeat) e.preventDefault();
+                return;
+            }
             if (e.key === 'Escape') {
                 if (e.repeat) return;
                 if (screen === 'howto') {
@@ -4407,6 +4445,8 @@
                     requestResume();
                 } else if (screen === 'play') {
                     requestPause();
+                } else if (screen === 'end') {
+                    document.getElementById('endMenuBtn').click();
                 }
                 return;
             }

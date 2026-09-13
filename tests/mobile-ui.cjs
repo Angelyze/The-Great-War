@@ -28,11 +28,12 @@ module.exports = async function ({ assert, game, evaluate, call, screenshot, err
             })()`);
             assert(result.compact && result.fits && !result.tutorial && result.touch,JSON.stringify({w,h,level,result}));
             assert.equal(result.middle,'gameCanvas');
-            assert(result.hud.x>=safe[3] && result.hud.right<=w-safe[1] && result.hud.y===0,JSON.stringify(result));
+            assert(result.hud.x===safe[3]+8 && result.hud.right<=w-safe[1] && result.hud.y===8,JSON.stringify(result));
             assert(result.notice.y>=result.hud.bottom && result.notice.bottom<h*0.45,JSON.stringify({w,h,result}));
             for(const button of [result.jump,result.pause]) {
-                assert(button.w>=48 && button.h>=48 && button.h<=56 && button.x>=safe[3] && button.right<=w-safe[1]+1 && button.bottom<=h-safe[2]+1,JSON.stringify({w,h,button}));
+                assert(button.w>=48 && button.h>=48 && button.h<=56 && button.x>=safe[3] && button.right<=w-safe[1]+1 && button.bottom<=h-8+1,JSON.stringify({w,h,button}));
             }
+            assert.equal(result.jump.bottom,h-8,'bottom gap matches the 8px top/side spacing, without extra inset');
             cases++;
         }
         await game("resetRun();showScreen('play');setBanner('Level 1 — '+LEVEL_NAMES[0],2);draw();");
@@ -81,6 +82,48 @@ module.exports = async function ({ assert, game, evaluate, call, screenshot, err
     assert(await game("!player.grounded&&score>=window.oldScore&&utility.poles[1].seed===window.poleSeed&&utility.poles[1].stage==='base'&&jumpInput.sources.size===0"));
     await game("requestPause();document.getElementById('restartBtn').click();");
     assert(await game("screen==='play'&&player.grounded&&level===1&&!document.getElementById('tutorialHint')"));
+    const key = async (name, shift=false) => {
+        const codes={Tab:9,Enter:13,' ':32,Escape:27,ArrowUp:38,ArrowDown:40,ArrowLeft:37,ArrowRight:39,Home:36,End:35};
+        const fields={key:name,windowsVirtualKeyCode:codes[name],modifiers:shift?8:0};
+        await call('Input.dispatchKeyEvent',{type:'keyDown',...fields,...(name==='Enter'?{text:'\r'}:name===' '?{text:' '}:{})});
+        await call('Input.dispatchKeyEvent',{type:'keyUp',...fields});
+    };
+    let menuCases=0;
+    for (const [w,h] of [[360,800],[800,360],[1280,720]]) {
+        await viewport(w,h,false);
+        for(const mode of ['mouse','touch','keyboard']) {
+            for(const screen of ['menu','pause','howto','end']) {
+                const ids=await game(`save.controls=${JSON.stringify(mode)};showScreen(${JSON.stringify(screen)});Array.from(screens[screen].querySelectorAll('button:not(:disabled)')).filter(b=>b.getClientRects().length).map(b=>b.id)`);
+                const first=await evaluate('document.activeElement.id');
+                assert.equal(first,ids[0]);
+                for(let i=1;i<=ids.length;i++) {
+                    await key('Tab');
+                    assert.equal(await evaluate('document.activeElement.id'),ids[i%ids.length]);
+                }
+                await key('Tab',true);
+                assert.equal(await evaluate('document.activeElement.id'),ids.at(-1));
+                await key('Home');assert.equal(await evaluate('document.activeElement.id'),ids[0]);
+                await key('End');assert.equal(await evaluate('document.activeElement.id'),ids.at(-1));
+                await key('Home');await key('ArrowDown');
+                if(ids.length>1) assert.notEqual(await evaluate('document.activeElement.id'),ids[0]);
+                for(const arrow of ['ArrowRight','ArrowUp','ArrowLeft']) {
+                    await key(arrow);assert(ids.includes(await evaluate('document.activeElement.id')));
+                }
+                assert(await game(`(()=>{const b=document.activeElement.getBoundingClientRect(),p=screens[screen].querySelector('.panel').getBoundingClientRect();return b.top>=p.top-1&&b.bottom<=p.bottom+1})()`),'focused button scrolled into view');
+                menuCases++;
+            }
+        }
+    }
+    await viewport(1280,720,false);
+    await game("showScreen('menu');");await key('ArrowDown');await key('Enter');
+    assert.equal(await evaluate('document.body.dataset.screen'),'howto');
+    await key('Escape');assert.equal(await evaluate('document.body.dataset.screen'),'menu');
+    await key('Enter');assert.equal(await evaluate('document.body.dataset.screen'),'play');
+    await key('Escape');assert.equal(await evaluate('document.body.dataset.screen'),'pause');
+    await key(' ');assert.equal(await evaluate('document.body.dataset.screen'),'play');
+    await game("showScreen('end')");await key('Escape');
+    assert.equal(await evaluate('document.body.dataset.screen'),'menu');
+    console.log('PASS: '+menuCases+' keyboard menu cases; Tab/Shift+Tab, arrows, Home/End, Enter/Space and Escape');
     assert.equal(errors.length,0,JSON.stringify(errors));
     assert(!await evaluate('sdkCalls.includes("error")'));
     console.log('PASS: '+cases+' mobile HUD layouts, safe areas, timeout notices, fresh/legacy saves, manual help, desktop styling, multitouch, rotation, restart');
