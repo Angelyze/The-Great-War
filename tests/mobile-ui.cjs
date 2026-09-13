@@ -28,7 +28,7 @@ module.exports = async function ({ assert, game, evaluate, call, screenshot, err
             })()`);
             assert(result.compact && result.fits && !result.tutorial && result.touch,JSON.stringify({w,h,level,result}));
             assert.equal(result.middle,'gameCanvas');
-            assert(result.hud.x>=safe[3] && result.hud.right<=w-safe[1] && result.hud.y>=safe[0],JSON.stringify(result));
+            assert(result.hud.x>=safe[3] && result.hud.right<=w-safe[1] && result.hud.y===0,JSON.stringify(result));
             assert(result.notice.y>=result.hud.bottom && result.notice.bottom<h*0.45,JSON.stringify({w,h,result}));
             for(const button of [result.jump,result.pause]) {
                 assert(button.w>=48 && button.h>=48 && button.h<=56 && button.x>=safe[3] && button.right<=w-safe[1]+1 && button.bottom<=h-safe[2]+1,JSON.stringify({w,h,button}));
@@ -74,7 +74,7 @@ module.exports = async function ({ assert, game, evaluate, call, screenshot, err
     await game("resetRun();showScreen('play');window.oldScore=score=123;window.poleSeed=utility.poles[1].seed;toppleUtilityPole(utility.poles[1]);");
     const jump = await game('(()=>{const r=jumpBtn.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()');
     await call('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:240,y:550,id:1},{...jump,id:2}]});
-    assert(await game('!player.grounded&&pointer.down&&jumpInput.sources.size>0'));
+    assert(await game('!player.grounded&&!pointer.down&&jumpInput.sources.size>0'));
     await game('update(1/30,0)');
     await call('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
     await viewport(800,360,true);

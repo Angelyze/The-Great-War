@@ -428,7 +428,7 @@
         }
         /* Compact, touch-friendly chrome; the desktop HUD keeps its original styling. */
         body[data-ui="compact"] #hud {
-            top: calc(6px + var(--safe-top));
+            top: 0;
             left: calc(8px + var(--safe-left));
             right: calc(8px + var(--safe-right));
             margin: 0 auto;
@@ -576,7 +576,7 @@
             touch-action: none;
             color: #e8b368;
         }
-        #joystick::before { content: '‹     ›'; position: absolute; inset: 0; display: grid; place-items: center; font-size: 22px; white-space: pre; opacity: 0.6; }
+        #joystick::before { content: '‹   ›'; position: absolute; inset: 0; display: grid; place-items: center; font-size: 20px; white-space: pre; opacity: 0.6; }
         #joystick::after { content: '↑'; position: absolute; top: 3px; left: 0; width: 100%; text-align: center; font-size: 16px; opacity: 0.7; }
         #joystickKnob {
             position: absolute; left: 50%; top: 50%; width: 34%; height: 34%;
@@ -591,7 +591,7 @@
         body[data-controls="touch"][data-stick="right"] #pauseBtn { bottom: calc(var(--stick-size) + 20px + var(--safe-bottom)); }
         @media (orientation: landscape) and (min-width: 560px) {
             body[data-controls="touch"] #hud { right: calc(84px + var(--safe-right)); }
-            body[data-controls="touch"] #pauseBtn { top: calc(6px + var(--safe-top)); right: calc(8px + var(--safe-right)); bottom: auto; }
+            body[data-controls="touch"] #pauseBtn { top: 0; right: calc(8px + var(--safe-right)); bottom: auto; }
         }
     </style>
 </head>
@@ -816,7 +816,7 @@
         let backgroundBlend = 1;
 
         const keys = { left: false, right: false };
-        const pointer = { down: false, x: 0, hover: false, startY: 0, id: null, swiped: false };
+        const pointer = { down: false, x: 0, hover: false, id: null };
         const jumpInput = { sources: new Set(), pointerId: null };
         const scenery = { rear: [], far: [], mid: [], roofs: [], masonry: [], clouds: [], smoke: [], smokeSites: [], blueprint: null };
         // Four scenery-only supports, ten spans (including offscreen runs), 130 cable nodes.
@@ -930,7 +930,7 @@
             document.getElementById('howControls').textContent = {
                 mouse: 'Move the mouse to steer. Click the playfield to jump.',
                 keyboard: 'Move with A/D or Left/Right. Jump with Space, W, or Up.',
-                touch: 'Use the joystick to move left or right. Push it up to jump, or tap JUMP. You can also drag on the playfield.'
+                touch: 'Use the joystick to move left or right. Push it up to jump, or tap JUMP.'
             }[mode];
             document.getElementById('howPause').textContent = mode === 'keyboard'
                 ? 'Press Esc or P to pause and open the menu.'
@@ -3738,9 +3738,10 @@
             const speed = player.grounded ? walkSpeed : walkSpeed + (Math.max(walkSpeed, player.jumpAirSpeed) - walkSpeed) * player.jumpCharge;
             const prevX = player.x;
             const step = speed * dt;
-            if (keys.left) player.x -= step;
+            if (activeControlMode() === 'touch') {
+                if (joystick.id !== null) player.x += joystick.x * step;
+            } else if (keys.left) player.x -= step;
             else if (keys.right) player.x += step;
-            else if (joystick.id !== null) player.x += joystick.x * step;
             else if (pointer.down || pointer.hover) {
                 const target = pointer.x - player.w / 2;
                 const delta = target - player.x;
@@ -4327,7 +4328,6 @@
             pointer.down = false;
             pointer.hover = false;
             pointer.id = null;
-            pointer.swiped = false;
             jumpInput.sources.clear();
             jumpInput.pointerId = null;
             player.jumpHoldLeft = 0;
@@ -4359,12 +4359,10 @@
 
         canvas.addEventListener('pointerdown', (e) => {
             if (screen !== 'play' || userPaused || platformPaused || ended) return;
-            if (!acceptsControlInput(e.pointerType === 'mouse' ? 'mouse' : 'touch')) return;
+            if (e.pointerType !== 'mouse' || !acceptsControlInput('mouse')) return;
             if (pointer.id !== null || (e.pointerType === 'mouse' && e.button !== 0)) return;
             pointer.id = e.pointerId;
-            pointer.swiped = e.pointerType === 'mouse';
             canvas.setPointerCapture(e.pointerId);
-            pointer.startY = e.clientY;
             onPointer(e, true);
             if (screen === 'play') {
                 e.preventDefault();
@@ -4373,6 +4371,7 @@
             }
         });
         canvas.addEventListener('pointermove', (e) => {
+            if (e.pointerType !== 'mouse') return;
             if (e.pointerType === 'mouse' && save.controls === 'auto' && joystick.id === null && !keys.left && !keys.right && !jumpInput.sources.size && !pointer.down) {
                 if (mouseIntent.x === null) {
                     mouseIntent.x = e.clientX;
@@ -4383,23 +4382,15 @@
                     mouseIntent.y = e.clientY;
                 }
             }
-            if (!acceptsControlInput(e.pointerType === 'mouse' ? 'mouse' : 'touch')) return;
+            if (!acceptsControlInput('mouse')) return;
             if (pointer.id !== null && pointer.id !== e.pointerId) return;
-            if (e.pointerType !== 'mouse' && pointer.id === null) return;
             onPointer(e, pointer.id === e.pointerId && pointer.down);
-            const swipeDistance = clamp(Math.min(worldW, worldH) * 0.08, 24, 48);
-            if (pointer.down && !pointer.swiped && pointer.startY - e.clientY > swipeDistance) {
-                pointer.swiped = true;
-                setJumpHeld('canvas', true);
-            }
         });
         canvas.addEventListener('pointerup', (e) => {
             if (pointer.id !== e.pointerId) return;
-            if (!pointer.swiped && pointer.startY - e.clientY > clamp(Math.min(worldW, worldH) * 0.08, 24, 48)) requestJump();
             setJumpHeld('canvas', false);
             onPointer(e, false);
             pointer.id = null;
-            if (e.pointerType !== 'mouse') pointer.hover = false;
         });
         canvas.addEventListener('pointercancel', (e) => { if (pointer.id === e.pointerId) clearInput(); });
         canvas.addEventListener('lostpointercapture', (e) => { if (pointer.id === e.pointerId) clearInput(); });

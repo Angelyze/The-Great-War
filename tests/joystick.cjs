@@ -1,6 +1,10 @@
 // Run: node tests/utility-poles.cjs --joystick-only
 module.exports = async ({assert,game,evaluate,call,screenshot,errors}) => {
-    const touch=(type,points=[])=>call('Input.dispatchTouchEvent',{type,touchPoints:points});
+    // Chromium may coalesce touch moves until the next compositor frame.
+    const touch=async(type,points=[])=>{
+        await call('Input.dispatchTouchEvent',{type,touchPoints:points});
+        await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+    };
     const center=id=>game(`(()=>{const r=document.getElementById(${JSON.stringify(id)}).getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()`);
     for(const [w,h] of [[225,800],[360,800],[800,360],[851,393],[1024,768]]) {
         await call('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:5});
@@ -9,12 +13,18 @@ module.exports = async ({assert,game,evaluate,call,screenshot,errors}) => {
             await game(`save.controls='touch';save.joystickSide=${JSON.stringify(side)};layout();startPlay();player.invuln=9999;lastBomb=1e9;spawnEvery=1e9;draw();`);
             const rects=await game(`(()=>{const r=e=>{const b=e.getBoundingClientRect();return{x:b.x,y:b.y,w:b.width,h:b.height,right:b.right,bottom:b.bottom}};return {hud:r(hudEl),stick:r(joystickEl),jump:r(jumpBtn),pause:r(pauseBtn)}})()`);
             const overlap=(a,b)=>a.x<b.right&&a.right>b.x&&a.y<b.bottom&&a.bottom>b.y;
-            assert(rects.hud.x<=9 && rects.hud.y<=7,JSON.stringify(rects));
+            assert(rects.hud.x<=9 && rects.hud.y===0,JSON.stringify(rects));
             assert(rects.stick.x>=0&&rects.stick.right<=w&&rects.stick.bottom<=h);
             assert(!overlap(rects.stick,rects.jump)&&!overlap(rects.stick,rects.pause)&&!overlap(rects.hud,rects.pause),JSON.stringify({w,h,side,rects}));
             assert(rects.jump.x<30,'jump stays left');
             const s=await center('joystick');
             const rad=rects.stick.w*0.3;
+            await game('window.xBefore=player.x');
+            await touch('touchStart',[{x:w*0.5,y:h*0.5,id:9}]);
+            await touch('touchMove',[{x:w*0.75,y:h*0.3,id:9}]);
+            await game('update(1/30,0)');
+            assert(await game('player.x===window.xBefore&&player.grounded&&!pointer.down'),'playfield touches do not steer or jump');
+            await touch('touchEnd');
             await touch('touchStart',[{...s,id:1}]);
             await game('window.xBefore=player.x;update(1/30,0)');
             assert(await game('player.x===window.xBefore'),'neutral stick');
@@ -42,6 +52,15 @@ module.exports = async ({assert,game,evaluate,call,screenshot,errors}) => {
             assert(await game('joystick.id===null&&joystick.x===0&&joystickEl.classList.contains("hidden")'));
             await touch('touchEnd');
             await game('requestResume();draw()');
+            await touch('touchStart',[{x:s.x+rad,y:s.y,id:1}]);
+            await game('sdkCallbacks.pause()');
+            assert(await game('joystick.id===null&&joystick.x===0&&jumpInput.sources.size===0'));
+            await touch('touchEnd');
+            await game('sdkCallbacks.resume();cancelAnimationFrame(animationFrameId);animationFrameId=0;');
+            await touch('touchStart',[{x:s.x+rad,y:s.y,id:1}]);
+            await game('layout()');
+            assert(await game('joystick.id===null&&joystick.x===0'),'resize clears stick');
+            await touch('touchEnd');
             if((w===360||w===800)&&side==='right') await screenshot('joystick-'+w+'x'+h);
         }
     }

@@ -301,7 +301,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await game("resetRun();showScreen('play');save.controls='touch';syncControlsUI();");
     const jump = await game('(()=>{const r=jumpBtn.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()');
     await call('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:80,y:600,id:1},{...jump,id:2}]});
-    assert(await game('!player.grounded&&pointer.down'));
+    assert(await game('!player.grounded&&!pointer.down'));
     await call('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
     assert.equal(errors.length,0,JSON.stringify(errors));
     assert(!await evaluate('sdkCalls.includes("error")'));
