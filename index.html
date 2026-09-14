@@ -782,6 +782,62 @@
         let atmosphere = [];
         let scorePopups = [];
         let scorchMarks = [];
+        // Fixed-size, normalized heightfield: survives rotation without resampling or healing.
+        const terrainDepth = new Float32Array(257);
+        const TERRAIN_MAX_DEPTH = 0.65;
+        const TERRAIN_IMPACT_DEPTH = 0.014;
+        let terrainRevision = 0;
+
+        function terrainDepthAt(nx) {
+            const u = clamp(nx, 0, 1) * (terrainDepth.length - 1);
+            const i = Math.min(terrainDepth.length - 2, Math.floor(u));
+            return terrainDepth[i] + (terrainDepth[i + 1] - terrainDepth[i]) * (u - i);
+        }
+
+        function groundAt(x) {
+            return worldH - groundH + terrainDepthAt(x / Math.max(1, worldW)) * player.h;
+        }
+
+        function bodyFloor(body) {
+            // Both feet share a smooth support; narrow dents cannot swallow a whole sprite.
+            return Math.min(groundAt(body.x + body.w * 0.3), groundAt(body.x + body.w * 0.7)) - body.h + 6;
+        }
+
+        function terrainSpeed(x, direction) {
+            // Reference-space slope keeps the same movement feel in portrait and landscape.
+            const delta = terrainDepthAt(x / worldW + 0.008) - terrainDepthAt(x / worldW - 0.008);
+            return clamp(1 + direction * delta * 5, 0.85, 1.10);
+        }
+
+        function dentGround(x, giant) {
+            const nx = clamp(x / worldW, 0, 1);
+            const radius = giant ? 0.105 : 0.07;
+            // Only late level 5 permits maximum-depth cover. Time alone never digs a crater.
+            const age = clamp(runTime / 285, 0, 1);
+            const cap = 0.14 + (TERRAIN_MAX_DEPTH - 0.14) * age * age;
+            for (let i = 0; i < terrainDepth.length; i++) {
+                const distance = Math.abs(i / (terrainDepth.length - 1) - nx) / radius;
+                if (distance >= 1) continue;
+                const bowl = (1 - distance * distance) ** 2;
+                const depth = terrainDepth[i];
+                const increment = TERRAIN_IMPACT_DEPTH * (giant ? 3 : 1) * bowl * (1 - 0.4 * depth / TERRAIN_MAX_DEPTH);
+                terrainDepth[i] = Math.max(depth, Math.min(cap, depth + increment));
+            }
+            terrainRevision++;
+        }
+
+        function traceGround() {
+            ctx.beginPath();
+            ctx.moveTo(-24, groundAt(0));
+            for (let i = 0; i < terrainDepth.length; i++) {
+                const x = i / (terrainDepth.length - 1) * worldW;
+                ctx.lineTo(x, groundAt(x));
+            }
+            ctx.lineTo(worldW + 24, groundAt(worldW));
+            ctx.lineTo(worldW + 24, worldH + 24);
+            ctx.lineTo(-24, worldH + 24);
+            ctx.closePath();
+        }
         let clouds = [];
         let enemies = [];
         let bullets = [];
@@ -2491,7 +2547,7 @@
             if (w < 2 || h < 2) return;
             const oldW = worldW, oldH = worldH, oldGround = worldH - groundH;
             const oldPlayerW = player.w, oldPlayerH = player.h;
-            const oldFloor = oldGround - player.h + 6;
+            const oldFloor = bodyFloor(player);
             const oldBlast = bombBlastRadius(false);
             const resized = w !== viewW || h !== viewH;
             const desiredDpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -2513,7 +2569,7 @@
             const spr = sprites.soldier;
             const aspect = spr && spr.width ? (spr.height / spr.width) : 2.35;
             player.h = Math.round(player.w * Math.max(aspect, 2.2));
-            groundH = Math.round(clamp(unit * 0.1, 70, 140));
+            groundH = Math.max(Math.round(clamp(unit * 0.1, 70, 140)), Math.ceil(player.h * TERRAIN_MAX_DEPTH + 18));
             const gy = worldH - groundH - player.h + 6;
             const xScale = worldW / Math.max(1, oldW);
             const yScale = worldH / Math.max(1, oldH);
@@ -2522,7 +2578,7 @@
             const remapX = (x, beforeW, afterW) => (x + beforeW / 2) * xScale - afterW / 2;
             const remapY = (y) => groundY - (oldGround - y) * yScale;
             player.x = clamp(player.x / Math.max(1, oldW - oldPlayerW) * (worldW - player.w), 0, worldW - player.w);
-            player.y = player.grounded ? gy : gy - (oldFloor - player.y) * yScale;
+            player.y = bodyFloor(player) - (player.grounded ? 0 : (oldFloor - player.y) * yScale);
             player.vy *= yScale;
             player.jumpAirSpeed = longJumpSpeed();
             player.lastX = player.x;
@@ -2532,23 +2588,26 @@
                 const baseBomb = bombBaseSize();
                 bombs.forEach((bomb) => {
                     const beforeW = bomb.w;
-                    const distance = oldGround - bomb.h - bomb.startY;
+                    const distance = oldGround + terrainDepthAt((bomb.x + bomb.w / 2) / oldW) * oldPlayerH - bomb.h - bomb.startY;
                     const progress = (bomb.y - bomb.startY) / Math.max(1, distance);
                     bomb.w = baseBomb.bw * (bomb.giant ? 2 : 1);
                     bomb.h = baseBomb.bh * (bomb.giant ? 2 : 1);
                     bomb.x = clamp(remapX(bomb.x, beforeW, bomb.w), 0, worldW - bomb.w);
                     bomb.startY = -bomb.h - 8;
-                    const newDistance = groundY - bomb.h - bomb.startY;
+                    const newDistance = groundAt(bomb.x + bomb.w / 2) - bomb.h - bomb.startY;
                     bomb.y = bomb.startY + progress * newDistance;
                     bomb.speed *= newDistance / Math.max(1, distance);
                     bomb.targetX = bomb.x + bomb.w / 2;
                 });
                 enemies.forEach((enemy) => {
+                    const oldSupport = oldGround + Math.min(terrainDepthAt((enemy.x + enemy.w * 0.3) / oldW), terrainDepthAt((enemy.x + enemy.w * 0.7) / oldW)) * oldPlayerH - enemy.h + 6;
+                    const clearance = oldSupport - enemy.y;
                     const beforeW = enemy.w;
                     enemy.w *= bodyScale;
                     enemy.h *= player.h / Math.max(1, oldPlayerH);
                     enemy.x = remapX(enemy.x, beforeW, enemy.w);
-                    enemy.y = groundY - enemy.h + 6;
+                    enemy.y = bodyFloor(enemy) - (enemy.grounded === false ? clearance * yScale : 0);
+                    enemy.vy = (enemy.vy || 0) * yScale;
                     enemy.speed *= xScale;
                     enemy.bulletSpeed *= xScale;
                 });
@@ -2560,6 +2619,7 @@
                     bullet.x = remapX(bullet.x, beforeW, bullet.w);
                     bullet.y = groundY - heightAboveGround * player.h / Math.max(1, oldPlayerH) - bullet.h / 2;
                     bullet.vx *= xScale;
+                    bullet.vy = (bullet.vy || 0) * player.h / Math.max(1, oldPlayerH);
                 });
                 airdrops.forEach((drop) => {
                     const beforeW = drop.w, beforeH = drop.h;
@@ -2568,6 +2628,7 @@
                     drop.h = Math.round(drop.w * 1.4);
                     drop.x = clamp(remapX(drop.x, beforeW, drop.w), 0, worldW - drop.w);
                     drop.y = -drop.h + progress * (worldH + drop.h);
+                    if (drop.restTime) drop.y = groundAt(drop.x + drop.w / 2) - drop.h;
                     drop.speed *= (worldH + drop.h) / (oldH + beforeH);
                 });
                 const blastScale = bombBlastRadius(false) / Math.max(1, oldBlast);
@@ -2684,6 +2745,8 @@
             enemies = [];
             bullets = [];
             floorDamage = [];
+            terrainDepth.fill(0);
+            terrainRevision++;
             resetUtilityPoles();
             level = 1;
             configureEnemyWaves();
@@ -2734,7 +2797,7 @@
             const x = side * h * 22 / 256;
             const y = -(240 / 256 - part.lo) * h;
             out.x = pole.nx * worldW + part.x * h + Math.cos(angle) * x - Math.sin(angle) * y;
-            out.y = worldH - groundH + 3 + part.y * h + Math.sin(angle) * x + Math.cos(angle) * y;
+            out.y = groundAt(pole.nx * worldW) + 3 + part.y * h + Math.sin(angle) * x + Math.cos(angle) * y;
             return out;
         }
 
@@ -2766,7 +2829,35 @@
             pole.angle = pole.parts[pole.parts.length - 1].angle;
         }
 
-        function utilityContactAngle(part) {
+        function utilityContactAngle(part, pole) {
+            if (pole && terrainDepth.some(depth => depth > 0)) {
+                if (part.contactRevision === terrainRevision && part.contactWidth === worldW && part.contactHeight === player.h && Math.abs(part.contactX - part.x) < 0.00001 && Math.abs(part.contactY - part.y) < 0.00001) return part.contactAngle;
+                const h = player.h * UTILITY_HEIGHT;
+                const baseX = pole.nx * worldW;
+                const baseY = groundAt(baseX);
+                const touches = angle => {
+                    const s = Math.sin(angle * part.direction), c = Math.cos(angle);
+                    return part.outline.some(point => {
+                        const x = baseX + (part.x + c * point.x + s * point.length) * h;
+                        const y = baseY + (part.y + s * point.x - c * point.length) * h;
+                        return y > groundAt(x) + 0.01;
+                    });
+                };
+                let lo = 0, hi = Math.PI;
+                for (let i = 1; i <= 24; i++) {
+                    const angle = i * Math.PI / 24;
+                    if (touches(angle)) { hi = angle; break; }
+                    lo = angle;
+                }
+                for (let i = 0; i < 12; i++) {
+                    const mid = (lo + hi) / 2;
+                    if (touches(mid)) hi = mid; else lo = mid;
+                }
+                part.contactRevision = terrainRevision; part.contactWidth = worldW; part.contactHeight = player.h;
+                part.contactX = part.x; part.contactY = part.y;
+                part.contactAngle = lo * part.direction;
+                return part.contactAngle;
+            }
             let target = Math.PI;
             const clearance = Math.max(0, -part.y);
             for (const point of part.outline) {
@@ -2824,9 +2915,13 @@
 
         function utilityLowestPoint(pole) {
             let bottom = -Infinity;
+            const h = player.h * UTILITY_HEIGHT, x = pole.nx * worldW, y = groundAt(x);
             for (const part of pole.parts) {
                 const s = Math.sin(part.angle), c = Math.cos(part.angle);
-                for (const point of part.outline) bottom = Math.max(bottom, part.y + s * point.x - c * point.length);
+                for (const point of part.outline) {
+                    const px = x + (part.x + c * point.x + s * point.length) * h;
+                    bottom = Math.max(bottom, part.y + s * point.x - c * point.length + (y - groundAt(px)) / h);
+                }
             }
             return bottom;
         }
@@ -2913,7 +3008,7 @@
             positionUtilityParts(pole);
             const fracture = next === 'ground' ? pole.parts[0] : pole.parts.find(part => part.lo === pole.fracture);
             utilityBurst((pole.nx * worldW) + fracture.x * player.h * UTILITY_HEIGHT,
-                worldH - groundH + 3 + fracture.y * player.h * UTILITY_HEIGHT, pole.seed + pole.parts.length, false);
+                groundAt(pole.nx * worldW) + 3 + fracture.y * player.h * UTILITY_HEIGHT, pole.seed + pole.parts.length, false);
         }
 
         function splitUtilityWireLength(wire) {
@@ -2945,9 +3040,10 @@
         }
 
         function damageUtilityPoles(x, y, radius, giant) {
-            const h = player.h * UTILITY_HEIGHT, gy = worldH - groundH + 3;
+            const h = player.h * UTILITY_HEIGHT;
             for (const pole of utility.poles) {
                 const bx = pole.nx * worldW;
+                const gy = groundAt(bx) + 3;
                 let distance = Infinity;
                 for (const part of pole.parts) {
                     const ax = bx + part.x * h, ay = gy + part.y * h;
@@ -3037,8 +3133,9 @@
                 }
                 for (let j = 1; j < WIRE_NODES - 1; j++) {
                     const n = wire.nodes[j];
-                    if (n.y >= gy) {
-                        n.y = gy; n.py = gy;
+                    const floor = groundAt(n.x) + 3;
+                    if (n.y >= floor) {
+                        n.y = floor; n.py = floor;
                         n.px += (n.x - n.px) * 0.5;
                     }
                 }
@@ -3072,7 +3169,7 @@
                     for (const part of pole.parts) {
                         part.x = anchorX; part.y = anchorY;
                         if (part.mobile) {
-                            const target = utilityContactAngle(part);
+                            const target = utilityContactAngle(part, pole);
                             if (part.settled && (target - part.angle) * part.direction > 0.04) {
                                 part.settled = false; part.velocity = part.direction * 0.1;
                             }
@@ -3085,7 +3182,7 @@
                                     if (!part.bounced) {
                                         part.bounced = true;
                                         if (Math.abs(target) < Math.PI - 0.01) utilityBurst(pole.nx * worldW + (part.x + Math.sin(part.angle) * (part.hi - part.lo)) * player.h * UTILITY_HEIGHT,
-                                            worldH - groundH + 3, pole.seed + part.lo * 256, false);
+                                            groundAt(pole.nx * worldW + (part.x + Math.sin(part.angle) * (part.hi - part.lo)) * player.h * UTILITY_HEIGHT) + 3, pole.seed + part.lo * 256, false);
                                         if (!reduced) part.velocity *= -0.1;
                                     } else part.velocity = 0;
                                     if (reduced || part.velocity === 0) { part.settled = true; part.velocity = 0; }
@@ -3160,7 +3257,7 @@
         }
 
         function drawUtilityPoles() {
-            const h = player.h * UTILITY_HEIGHT, gy = worldH - groundH + 3;
+            const h = player.h * UTILITY_HEIGHT;
             ctx.save();
             ctx.lineCap = 'round';
             for (const wire of utility.wires) {
@@ -3188,6 +3285,7 @@
                 const damage = Math.min(8, Math.ceil(Math.max(pole.cosmetic, pole.fatigue * 0.9, pole.structural) * 8));
                 if (damage !== pole.cacheDamage) bakeUtilityPole(pole, damage);
                 const x = pole.nx * worldW;
+                const gy = groundAt(x) + 3;
                 ctx.fillStyle = 'rgba(12,14,10,0.3)';
                 ctx.beginPath(); ctx.ellipse(x, gy + 1, h * 0.046, Math.max(2, h * 0.012), 0, 0, Math.PI * 2); ctx.fill();
                 for (const part of pole.parts) {
@@ -3195,7 +3293,8 @@
                     if (part.mobile) {
                         ctx.strokeStyle = 'rgba(12,14,10,' + (0.12 + Math.abs(Math.sin(part.angle)) * 0.18) + ')';
                         ctx.lineWidth = h * 0.025;
-                        ctx.beginPath(); ctx.moveTo(ax, gy); ctx.lineTo(ax + Math.sin(part.angle) * length * h, gy); ctx.stroke();
+                        const endX = ax + Math.sin(part.angle) * length * h;
+                        ctx.beginPath(); ctx.moveTo(ax, groundAt(ax) + 3); ctx.lineTo(endX, groundAt(endX) + 3); ctx.stroke();
                     }
                     ctx.save();
                     ctx.translate(ax, ay); ctx.rotate(part.angle);
@@ -3255,6 +3354,7 @@
             scorchMarks.push({
                 x: clamp(x / Math.max(1, worldW), 0, 1),
                 size: bombBlastRadius(giant) * (giant ? 0.72 : 0.5),
+                giant: !!giant,
                 alpha: giant ? 0.64 : 0.38,
                 seed: Math.random() * 1000
             });
@@ -3264,6 +3364,7 @@
             ctx.save();
             scorchMarks.forEach((mark) => {
                 const x = mark.x * worldW;
+                groundY = groundAt(x);
                 const wobble = 0.82 + crackNoise(mark.seed, 2) * 0.32;
                 const gradient = ctx.createRadialGradient(x, groundY + 2, 0, x, groundY + 2, mark.size);
                 gradient.addColorStop(0, 'rgba(8,5,3,' + mark.alpha + ')');
@@ -3271,14 +3372,16 @@
                 gradient.addColorStop(1, 'rgba(30,16,7,0)');
                 ctx.fillStyle = gradient;
                 ctx.beginPath();
-                ctx.ellipse(x, groundY + 3, mark.size, Math.max(3, mark.size * 0.14 * wobble), 0, 0, Math.PI * 2);
+                // Giant blasts retain the lower curve, with a flat top across the ground.
+                ctx.ellipse(x, groundY + 3, mark.size, Math.max(3, mark.size * 0.14 * wobble), 0, 0, mark.giant ? Math.PI : Math.PI * 2);
+                ctx.closePath();
                 ctx.fill();
             });
             ctx.restore();
         }
 
         function bombFallProgress(bomb, groundY) {
-            const endY = groundY - bomb.h;
+            const endY = groundAt(bomb.x + bomb.w / 2) - bomb.h;
             return clamp((bomb.y - bomb.startY) / Math.max(1, endY - bomb.startY), 0, 1);
         }
 
@@ -3286,6 +3389,7 @@
             if (!save.bombGuides) return;
             ctx.save();
             bombs.forEach((bomb) => {
+                groundY = groundAt(bomb.targetX);
                 const progress = bombFallProgress(bomb, groundY);
                 const radius = bombBlastRadius(bomb.giant);
                 const pulse = 0.78 + Math.sin(sceneTime * (5 + progress * 9) + bomb.seed) * 0.14;
@@ -3371,7 +3475,8 @@
             ctx.save();
             floorDamage.forEach((crack) => {
                 const x = crack.x * worldW;
-                const depth = Math.min(groundH - 6, 3.5 + crack.depthDamage * 2.05);
+                groundY = groundAt(x);
+                const depth = Math.min(worldH - groundY - 6, 3.5 + crack.depthDamage * 2.05);
                 const width = Math.min(worldW * 0.1, 3.5 + crack.widthDamage * 1.75);
                 const steps = Math.max(2, Math.ceil(depth / 4));
                 const trunk = [{ x: x, y: groundY }];
@@ -3454,7 +3559,10 @@
             const fireEvery = Math.max(1.15, 2.7 - (level - 1) * 0.28);
             enemies.push({
                 x: fromLeft ? -w - 10 : worldW + 10,
-                y: worldH - groundH - h + 6,
+                y: groundAt(fromLeft ? 0 : worldW) - h + 6,
+                vy: 0,
+                grounded: true,
+                aim: 0,
                 w: w,
                 h: h,
                 facing: fromLeft ? 1 : -1,
@@ -3473,12 +3581,14 @@
             const w = Math.max(8, Math.round(player.w * 0.28));
             const h = Math.max(3, Math.round(player.h * 0.06));
             const dir = en.facing;
+            const aim = en.aim || 0;
             bullets.push({
-                x: dir > 0 ? en.x + en.w : en.x - w,
-                y: en.y + en.h * 0.42,
+                x: en.x + en.w / 2 + dir * en.w * 0.9 * Math.cos(aim) - w / 2,
+                y: en.y + en.h * 0.42 + Math.max(3, en.h * 0.05) / 2 + en.w * 0.9 * Math.sin(aim) - h / 2,
                 w: w,
                 h: h,
-                vx: dir * en.bulletSpeed
+                vx: dir * en.bulletSpeed * Math.cos(en.aim || 0),
+                vy: en.bulletSpeed * Math.sin(en.aim || 0)
             });
             en.muzzle = 0.1;
             beep('shoot', false, en.x + en.w / 2);
@@ -3547,7 +3657,10 @@
             if (!effectsAreReduced()) {
                 shake = Math.max(shake, (giant ? 16 : 3.5) * levelShakeMultiplier);
             }
-            if (fromGround) addScorch(x, giant);
+            if (fromGround) {
+                addScorch(x, giant);
+                dentGround(x, giant);
+            }
             const n = effectsAreReduced() ? (giant ? 12 : 7) : (giant ? 28 : 14);
             for (let i = 0; i < n; i++) {
                 const a = Math.random() * Math.PI * (fromGround ? 1 : 2);
@@ -3672,6 +3785,7 @@
         }
 
         function update(dt, now) {
+            if (platformPaused) return;
             const pausedScene = screen === 'pause' || userPaused || (screen === 'howto' && howtoReturn === 'pause');
             if (!pausedScene) {
                 const ambientRate = screen === 'play' ? 1 : 0.28;
@@ -3750,9 +3864,24 @@
             }
             player.x = clamp(player.x, 0, worldW - player.w);
 
-            const floorY = worldH - groundH - player.h + 6;
+            if (player.grounded) {
+                const distance = player.x - prevX;
+                const scaled = distance * terrainSpeed(prevX + player.w / 2, Math.sign(distance));
+                player.x = clamp(prevX + scaled, 0, worldW - player.w);
+                if (activeControlMode() !== 'touch' && !keys.left && !keys.right && (pointer.down || pointer.hover)) {
+                    const target = clamp(pointer.x - player.w / 2, 0, worldW - player.w);
+                    if ((target - prevX) * (target - player.x) < 0) player.x = target;
+                }
+            }
+
+            const floorY = bodyFloor(player);
             const grav = worldH * 2.7;
             const wasGrounded = player.grounded;
+            // Follow walkable slopes; when a blast removes support, gravity takes over.
+            if (wasGrounded && Math.abs(player.x - prevX) > 0) {
+                const oldSupport = Math.min(groundAt(prevX + player.w * 0.3), groundAt(prevX + player.w * 0.7)) - player.h + 6;
+                if (Math.abs(player.y - oldSupport) < 0.5) player.y = floorY;
+            }
             const heldTime = !wasGrounded && player.vy < 0 && jumpInput.sources.size
                 ? Math.min(dt, player.jumpHoldLeft, -player.vy / (grav * JUMP_HOLD_GRAVITY)) : 0;
             if (heldTime > 0) {
@@ -3826,8 +3955,8 @@
                 });
             }
 
-            const groundY = worldH - groundH;
             bombs = bombs.filter((b) => {
+                const groundY = groundAt(b.x + b.w / 2);
                 b.y += b.speed * dt;
                 for (let i = 0; i < enemies.length; i++) {
                     const en = enemies[i];
@@ -3883,16 +4012,27 @@
             enemies.forEach((en) => {
                 if (en.dead) return;
                 en.muzzle = Math.max(0, en.muzzle - dt);
-                en.y = worldH - groundH - en.h + 6;
+                const oldFloor = bodyFloor(en);
+                const onGround = en.grounded !== false && Math.abs(en.y - oldFloor) < 0.5;
                 const pcx = player.x + player.w / 2;
                 const ecx = en.x + en.w / 2;
                 if (pcx > ecx + 6) {
-                    en.x += en.speed * dt;
+                    en.x += en.speed * terrainSpeed(ecx, 1) * dt;
                     en.facing = 1;
                 } else if (pcx < ecx - 6) {
-                    en.x -= en.speed * dt;
+                    en.x -= en.speed * terrainSpeed(ecx, -1) * dt;
                     en.facing = -1;
                 }
+                const floor = bodyFloor(en);
+                if (onGround) en.y = floor;
+                en.vy = (en.vy || 0) + worldH * 2.7 * dt;
+                en.y += en.vy * dt;
+                en.grounded = en.y >= floor;
+                if (en.grounded) { en.y = floor; en.vy = 0; }
+                // Aim at ground-relative torso height, not at jumps; adjust slowly so cover is useful.
+                const targetY = bodyFloor(player) + player.h * 0.42;
+                const aim = clamp(Math.atan2(targetY - (en.y + en.h * 0.42), Math.max(player.w * 2, Math.abs(pcx - ecx))), -0.28, 0.28);
+                en.aim = (en.aim || 0) + clamp(aim - (en.aim || 0), -0.18 * dt, 0.18 * dt);
                 en.anim += dt;
                 en.fire += dt;
                 const onScreen = en.x + en.w > 0 && en.x < worldW;
@@ -3907,16 +4047,27 @@
             enemies = enemies.filter((en) => !en.dead);
 
             bullets = bullets.filter((bu) => {
-                bu.x += bu.vx * dt;
-                if (player.invuln <= 0 && overlaps(bu.x, bu.y, bu.w, bu.h, player.x, player.y, player.w, player.h)) {
-                    hitPlayer(1, bu.x);
-                    return false;
+                // Sweep both terrain and bodies, preventing fast shots from tunnelling through slopes.
+                const steps = Math.max(1, Math.ceil(Math.hypot(bu.vx, bu.vy || 0) * dt / Math.max(1, Math.min(player.w / 4, worldW / 256))));
+                for (let i = 0; i < steps; i++) {
+                    bu.x += bu.vx * dt / steps;
+                    bu.y += (bu.vy || 0) * dt / steps;
+                    if (bu.y + bu.h >= groundAt(bu.x + bu.w / 2)) return false;
+                    if (player.invuln <= 0 && overlaps(bu.x, bu.y, bu.w, bu.h, player.x, player.y, player.w, player.h)) {
+                        hitPlayer(1, bu.x);
+                        return false;
+                    }
                 }
-                return bu.x + bu.w > -20 && bu.x < worldW + 20;
+                return bu.x + bu.w > -20 && bu.x < worldW + 20 && bu.y > -20 && bu.y < worldH;
             });
 
             airdrops = airdrops.filter((a) => {
                 a.y += a.speed * dt;
+                const floor = groundAt(a.x + a.w / 2) - a.h;
+                if (a.y >= floor) {
+                    a.y = floor;
+                    a.restTime = (a.restTime || 0) + dt;
+                }
                 if (overlaps(a.x, a.y, a.w, a.h, player.x, player.y, player.w, player.h)) {
                     player.lives += 1;
                     airdropsCaught += 1;
@@ -3938,7 +4089,8 @@
                     setBanner('Airdrop! +1 life', 1.6);
                     return false;
                 }
-                return a.y < worldH;
+                // A short pickup window replaces falling through the floor; no permanent stockpiles.
+                return (a.restTime || 0) < 4;
             });
 
             let liveParticleCount = 0;
@@ -4101,28 +4253,37 @@
             const terrain = ctx.createLinearGradient(0, gy, 0, worldH);
             terrain.addColorStop(0, mixColor(GROUND[from], GROUND[to], fade));
             terrain.addColorStop(1, '#18120d');
-            ctx.fillStyle = terrain;
+            // Recessed soil behind the cut surface, rather than sky in deep craters.
+            ctx.fillStyle = '#30291f';
             ctx.fillRect(-24, gy, worldW + 48, groundH + 24);
-            ctx.fillStyle = mixColor(GROUND_EDGE[from], GROUND_EDGE[to], fade);
-            ctx.fillRect(0, gy, worldW, 6);
+            ctx.fillStyle = terrain;
+            traceGround();
+            ctx.fill();
+            ctx.save();
+            ctx.clip();
+            ctx.strokeStyle = mixColor(GROUND_EDGE[from], GROUND_EDGE[to], fade);
+            ctx.lineWidth = 8;
+            ctx.stroke();
             for (let x = 0; x < worldW; x += 13) {
+                const surface = groundAt(x);
                 const grain = crackNoise(x + 71, 8);
                 ctx.fillStyle = grain > 0.5 ? 'rgba(164,123,74,0.15)' : 'rgba(9,8,6,0.28)';
-                ctx.fillRect(x, gy + 9 + grain * (groundH - 15), 2 + grain * 8, 1 + grain * 3);
+                ctx.fillRect(x, surface + 9 + grain * Math.max(1, worldH - surface - 15), 2 + grain * 8, 1 + grain * 3);
                 ctx.fillStyle = 'rgba(194,147,89,0.15)';
-                ctx.fillRect(x + 3, gy + 5 + crackNoise(x, 10) * 5, 3 + grain * 5, 1);
+                ctx.fillRect(x + 3, surface + 5 + crackNoise(x, 10) * 5, 3 + grain * 5, 1);
             }
             ctx.strokeStyle = '#1a140e';
             ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.moveTo(0, gy + 4);
+            ctx.moveTo(0, groundAt(0) + 4);
             for (let x = 0; x < worldW; x += 16) {
-                ctx.lineTo(x + 8, gy + crackNoise(x, 14) * 3 - 1);
-                ctx.lineTo(x + 16, gy + 3);
+                ctx.lineTo(x + 8, groundAt(x + 8) + crackNoise(x, 14) * 3 - 1);
+                ctx.lineTo(x + 16, groundAt(x + 16) + 3);
             }
             ctx.stroke();
             drawScorches(gy);
             drawFloorDamage(gy);
+            ctx.restore();
             drawUtilityPoles();
 
             explosions.forEach((e) => {
@@ -4173,32 +4334,35 @@
                 const fr = frames[Math.floor(en.anim * 6) % frames.length] || sprites.enemyIdle[0];
                 ctx.fillStyle = 'rgba(0,0,0,0.3)';
                 ctx.beginPath();
-                ctx.ellipse(en.x + en.w / 2, gy + 2, en.w * 0.48, Math.max(2, en.h * 0.055), 0, 0, Math.PI * 2);
+                ctx.ellipse(en.x + en.w / 2, groundAt(en.x + en.w / 2) + 2, en.w * 0.48, Math.max(2, en.h * 0.055), 0, 0, Math.PI * 2);
                 ctx.fill();
                 drawSprite(fr, en.x, en.y, en.w, en.h, en.facing < 0);
                 ctx.fillStyle = '#0e0e12';
                 const rh = Math.max(3, en.h * 0.05);
                 const rw = en.w * 0.9;
                 const ry = en.y + en.h * 0.42;
-                const rx = en.facing > 0 ? en.x + en.w * 0.55 : en.x + en.w * 0.45 - rw;
-                ctx.fillRect(rx, ry, rw, rh);
+                ctx.save();
+                ctx.translate(en.x + en.w / 2, ry + rh / 2);
+                ctx.rotate(en.facing * (en.aim || 0));
+                ctx.fillRect(0, -rh / 2, en.facing * rw, rh);
                 if (en.muzzle > 0) {
-                    const mx = en.facing > 0 ? rx + rw : rx;
+                    const mx = en.facing * rw;
                     ctx.fillStyle = '#fff0a0';
                     ctx.beginPath();
-                    ctx.moveTo(mx, ry + rh / 2);
-                    ctx.lineTo(mx + en.facing * Math.max(7, en.w * 0.28), ry - rh);
-                    ctx.lineTo(mx + en.facing * Math.max(7, en.w * 0.28), ry + rh * 2);
+                    ctx.moveTo(mx, 0);
+                    ctx.lineTo(mx + en.facing * Math.max(7, en.w * 0.28), -rh * 1.5);
+                    ctx.lineTo(mx + en.facing * Math.max(7, en.w * 0.28), rh * 1.5);
                     ctx.closePath();
                     ctx.fill();
                 }
+                ctx.restore();
             });
 
             bullets.forEach((bu) => {
                 ctx.strokeStyle = 'rgba(255,210,122,0.34)';
                 ctx.lineWidth = Math.max(1, bu.h * 0.65);
                 ctx.beginPath();
-                ctx.moveTo(bu.x - Math.sign(bu.vx) * Math.min(24, Math.abs(bu.vx) * 0.035), bu.y + bu.h / 2);
+                ctx.moveTo(bu.x + bu.w / 2 - bu.vx * 0.035, bu.y + bu.h / 2 - (bu.vy || 0) * 0.035);
                 ctx.lineTo(bu.x + bu.w / 2, bu.y + bu.h / 2);
                 ctx.stroke();
                 ctx.fillStyle = '#ffd27a';
@@ -4235,7 +4399,7 @@
                 const hide = player.invuln > 0 && Math.floor(player.invuln * 12) % 2 === 0;
                 ctx.fillStyle = 'rgba(0,0,0,0.36)';
                 ctx.beginPath();
-                ctx.ellipse(player.x + player.w / 2, gy + 2, player.w * 0.5, Math.max(2, player.h * 0.06), 0, 0, Math.PI * 2);
+                ctx.ellipse(player.x + player.w / 2, groundAt(player.x + player.w / 2) + 2, player.w * 0.5, Math.max(2, player.h * 0.06), 0, 0, Math.PI * 2);
                 ctx.fill();
                 if (player.invuln > 0) {
                     ctx.fillStyle = 'rgba(255,193,74,0.16)';
@@ -4252,10 +4416,10 @@
             } else if (screen === 'menu' || screen === 'end' || screen === 'loading') {
                 const sx = (worldW - player.w) / 2;
                 const bob = effectsAreReduced() ? 0 : Math.sin(sceneTime * 1.7) * 1.5;
-                const sy = worldH - groundH - player.h + 6 + bob;
+                const sy = groundAt(sx + player.w / 2) - player.h + 6 + bob;
                 ctx.fillStyle = 'rgba(0,0,0,0.34)';
                 ctx.beginPath();
-                ctx.ellipse(sx + player.w / 2, gy + 2, player.w * 0.5, Math.max(2, player.h * 0.06), 0, 0, Math.PI * 2);
+                ctx.ellipse(sx + player.w / 2, groundAt(sx + player.w / 2) + 2, player.w * 0.5, Math.max(2, player.h * 0.06), 0, 0, Math.PI * 2);
                 ctx.fill();
                 drawPlayerSprite(spr, sx, sy, player.w, player.h, false);
             }

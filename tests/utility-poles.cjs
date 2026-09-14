@@ -90,6 +90,11 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
         const { data } = await call('Page.captureScreenshot', { format: 'png' });
         fs.writeFileSync(path.join(artifactDir, name + '.png'), Buffer.from(data, 'base64'));
     }
+    if (process.argv.includes('--terrain-only')) {
+        await require('./terrain.cjs')({ assert, game, evaluate, call, screenshot, errors, resize });
+        console.log('Screenshots: '+artifactDir);
+        return;
+    }
     if (process.argv.includes('--ui-only')) {
         await require('./mobile-ui.cjs')({ assert, game, evaluate, call, screenshot, errors, source });
         console.log('Screenshots: '+artifactDir);
@@ -130,7 +135,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
             const directFall=utility.poles[1].state==='falling';
             for(let i=0;i<600;i++) updateUtilityPoles(1/120,true);
             const settled=utility.poles[1].state==='fallen';
-            const grounded=utility.wires.every(w=>w.nodes.every(n=>n.y<=worldH-groundH+3.1));
+            const grounded=utility.wires.every(w=>w.nodes.every(n=>n.y<=groundAt(n.x)+3.1));
             return {cosmeticOnly,scarred,distantSafe,directFall,settled,grounded};
         })()`);
         assert(Object.values(damage).every(Boolean), JSON.stringify({w,h,damage})); checks++;
