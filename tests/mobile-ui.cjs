@@ -115,7 +115,9 @@ module.exports = async function ({ assert, game, evaluate, call, screenshot, err
         }
     }
     await viewport(1280,720,false);
-    await game("showScreen('menu');");await key('ArrowDown');await key('Enter');
+    await game("showScreen('menu');");await key('Tab');
+    assert.equal(await evaluate('document.activeElement.id'),'challengeBtn');
+    await key('Tab');await key('Enter');
     assert.equal(await evaluate('document.body.dataset.screen'),'howto');
     await key('Escape');assert.equal(await evaluate('document.body.dataset.screen'),'menu');
     await key('Enter');assert.equal(await evaluate('document.body.dataset.screen'),'play');

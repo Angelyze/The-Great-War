@@ -90,6 +90,16 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
         const { data } = await call('Page.captureScreenshot', { format: 'png' });
         fs.writeFileSync(path.join(artifactDir, name + '.png'), Buffer.from(data, 'base64'));
     }
+    if (process.argv.includes('--feedback-only')) {
+        await require('./feedback.cjs')({ assert, game, evaluate, call, screenshot, errors, resize });
+        console.log('Screenshots: '+artifactDir);
+        return;
+    }
+    if (process.argv.includes('--challenges-only')) {
+        await require('./challenges.cjs')({ assert, game, evaluate, call, screenshot, errors, resize });
+        console.log('Screenshots: '+artifactDir);
+        return;
+    }
     if (process.argv.includes('--terrain-only')) {
         await require('./terrain.cjs')({ assert, game, evaluate, call, screenshot, errors, resize });
         console.log('Screenshots: '+artifactDir);

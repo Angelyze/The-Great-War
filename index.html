@@ -587,12 +587,26 @@
         #joystick.active { border-color: var(--amber-hot); }
         #joystick.active #joystickKnob { background: #b5731c; }
         body[data-stick="left"] #joystick { left: calc(8px + var(--safe-left)); right: auto; }
-        body[data-controls="touch"][data-stick="left"] #jumpBtn { bottom: calc(var(--stick-size) + 20px); }
-        body[data-controls="touch"][data-stick="right"] #pauseBtn { bottom: calc(var(--stick-size) + 20px); }
+        body[data-controls="touch"][data-stick="left"] #jumpBtn { left: auto; right: calc(8px + var(--safe-right)); bottom: 8px; }
+        body[data-controls="touch"] #pauseBtn { bottom: calc(var(--stick-size) + 20px); }
         @media (orientation: landscape) and (min-width: 560px) {
             body[data-controls="touch"] #hud { right: calc(84px + var(--safe-right)); }
             body[data-controls="touch"] #pauseBtn { top: 8px; right: calc(8px + var(--safe-right)); bottom: auto; }
         }
+        #menu .btn-row #playBtn, #menu .btn-row #challengeBtn { flex: 0 0 100%; width: 100%; }
+        #challengeBtn small { display: block; margin-top: 5px; font-size: 11px; line-height: 1.4; letter-spacing: 0.5px; font-weight: normal; color: #d2bb92; }
+        #medalShelf { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 8px 0 12px; }
+        .challenge-medal { border: 1px solid #66543c; color: #a7977d; padding: 4px 6px; font-size: 10px; letter-spacing: 0.3px; }
+        .challenge-medal::before { content: '☆'; margin-right: 4px; }
+        .challenge-medal.earned { color: #ffcf72; border-color: #c58a35; background: #392810; }
+        .challenge-medal.earned::before { content: '★'; }
+        #endMedal { color: #ffcf72; border: 1px solid #a67936; padding: 8px; font-size: 12px; }
+        #deathRecap { color: #e4c6a3; }
+        #aftermath { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+        #aftermath .aftermath-caption { text-align: center; padding: 12px; max-width: calc(100% - 24px); background: rgba(15,11,7,0.55); }
+        #aftermath h2 { font-size: clamp(20px, 4vmin, 36px); margin: 0 0 8px; }
+        #aftermath p { margin: 0 0 12px; color: #dfc79f; }
+        #aftermath button { pointer-events: auto; font-size: 12px; padding: 8px 14px; min-height: 44px; }
     </style>
 </head>
 <body>
@@ -625,11 +639,12 @@
             <h1 id="menuTitle">The Great War</h1>
             <p class="sub">Survive the nuclear war. Face what comes after.</p>
             <div class="scoreline" id="bestLine">BEST 0</div>
+            <div id="medalShelf" role="group" aria-label="Challenge completion medals"></div>
             <div class="btn-row">
                 <button class="primary" id="playBtn" type="button">Play</button>
+                <button id="challengeBtn" type="button" aria-label="Challenge: Normal. Activate to change."><span id="challengeLabel">Challenge: NORMAL</span><small id="challengeDescription">The original five-wave survival.</small></button>
                 <button id="howBtn" type="button">How to Play</button>
                 <button id="controlsBtn" type="button" aria-label="Control mode: Auto">Controls: AUTO</button>
-                <button id="stickSideBtn" type="button">Joystick: Right</button>
                 <button id="fxBtn" type="button">FX: Auto</button>
                 <button id="guidesBtn" type="button" aria-label="Bomb landing guides" aria-pressed="true">Guides: On</button>
             </div>
@@ -640,7 +655,7 @@
         <div class="panel howto">
             <h2 id="howTitle">How to Play</h2>
             <p>Survive 5 waves. Dodge bombs and blasts.</p>
-            <p>Jump over soldiers and bullets. Catch airdrops for extra lives.</p>
+            <p id="howPickups">Jump over soldiers and bullets. Catch airdrops for extra lives.</p>
             <p id="howControls">Move the mouse to steer. Click the playfield to jump.</p>
             <p>Hold jump to go a little farther.</p>
             <p id="howPause">Click PAUSE to open the menu.</p>
@@ -653,23 +668,33 @@
     <div id="pause" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="pauseTitle">
         <div class="panel">
             <h2 id="pauseTitle">Paused</h2>
+            <p class="sub" id="pauseChallenge">Normal</p>
             <p class="sub">Catch your breath. The war can wait.</p>
             <div class="btn-row">
                 <button class="primary" id="resumeBtn" type="button">Resume</button>
                 <button id="restartBtn" type="button">Restart</button>
                 <button id="pauseHowBtn" type="button">How to Play</button>
                 <button id="pauseControlsBtn" type="button" aria-label="Control mode: Auto">Controls: AUTO</button>
-                <button id="pauseStickSideBtn" type="button">Joystick: Right</button>
                 <button id="pauseFxBtn" type="button">FX: Auto</button>
                 <button id="pauseGuidesBtn" type="button" aria-label="Bomb landing guides" aria-pressed="true">Guides: On</button>
             </div>
         </div>
     </div>
 
+    <div id="aftermath" class="hidden" role="dialog" aria-modal="true" aria-labelledby="aftermathTitle">
+        <div class="aftermath-caption">
+            <h2 id="aftermathTitle">You Survived</h2>
+            <p>The war has ended.</p>
+            <button id="resultsBtn" type="button">View Results</button>
+        </div>
+    </div>
     <div id="end" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="endTitle" aria-describedby="endSub">
         <div class="panel">
             <h2 id="endTitle">Game Over</h2>
+            <p class="sub" id="endChallenge">Normal</p>
             <p class="sub" id="endSub"></p>
+            <p class="sub hidden" id="deathRecap"></p>
+            <p id="endMedal" class="hidden" role="status"></p>
             <div class="result-grid" id="endStats"></div>
             <div class="scoreline" id="endScore"></div>
             <div class="btn-row">
@@ -693,7 +718,6 @@
         const pauseBtn = document.getElementById('pauseBtn');
         const jumpBtn = document.getElementById('jumpBtn');
         const joystickEl = document.getElementById('joystick');
-        const stickSideButtons = [document.getElementById('stickSideBtn'), document.getElementById('pauseStickSideBtn')];
         const joystick = { id: null, x: 0, centerX: 0, centerY: 0, radius: 1, up: false };
         const bestLine = document.getElementById('bestLine');
         const endStats = document.getElementById('endStats');
@@ -701,13 +725,24 @@
         const guideButtons = [document.getElementById('guidesBtn'), document.getElementById('pauseGuidesBtn')];
         const controlButtons = [document.getElementById('controlsBtn'), document.getElementById('pauseControlsBtn')];
         const CONTROL_MODES = ['auto', 'mouse', 'keyboard', 'touch'];
+        const CHALLENGES = {
+            normal: { name: 'Normal', description: 'The original five-wave survival.', lives: 3, heal: true, bombRate: 1, extraGiants: 0, soldiers: 1, drops: 1 },
+            one_life: { name: 'One Life', description: 'One hit ends the run. Airdrops give points only.', lives: 1, heal: false, bombRate: 1, extraGiants: 0, soldiers: 1, drops: 1 },
+            air_raid: { name: 'Air Raid', description: '40% more frequent bombs. Extra giants. No soldiers.', lives: 3, heal: true, bombRate: 1.4, extraGiants: 1, soldiers: 0, drops: 1 },
+            impossible: { name: 'Impossible', description: '40% more frequent bombs + extra giants, double soldiers and airdrops.', lives: 3, heal: true, bombRate: 1.4, extraGiants: 1, soldiers: 2, drops: 2 }
+        };
+        const CHALLENGE_IDS = Object.keys(CHALLENGES);
+        let runChallenge = 'normal';
+        const runRules = () => CHALLENGES[runChallenge];
+        const challengeBest = id => id === 'normal' ? save.best : (save.challengeBests[id] || 0);
 
         const screens = {
             loading: document.getElementById('loading'),
             menu: document.getElementById('menu'),
             howto: document.getElementById('howto'),
             pause: document.getElementById('pause'),
-            end: document.getElementById('end')
+            end: document.getElementById('end'),
+            aftermath: document.getElementById('aftermath')
         };
 
         const LEVEL_TIME = 60;
@@ -715,6 +750,7 @@
         const INVULN = 1.15;
         const BACKGROUND_FADE_TIME = 2.5;
         const VICTORY_GRACE_TIME = 5;
+        const VICTORY_REVEAL_TIME = 1.8;
         const JUMP_HOLD_TIME = 0.16;
         const JUMP_HOLD_GRAVITY = 0.75;
         const MAX_PARTICLES = 220;
@@ -759,7 +795,8 @@
         let gameReadySent = false;
         let firstFrameSent = false;
         let saveLoaded = false;
-        let save = { v: 2, best: 0, bestLevel: 1, seenHowTo: false, effects: 'auto', bombGuides: true, controls: 'auto', joystickSide: 'right' };
+        let save = { v: 2, best: 0, bestLevel: 1, seenHowTo: false, effects: 'auto', bombGuides: true, controls: 'auto', joystickSide: 'right', challenge: 'normal', challengeBests: { one_life: 0, air_raid: 0, impossible: 0 } };
+        save.challengeMedals = { normal: false, one_life: false, air_raid: false, impossible: false };
         let pendingSave = false;
         let lastControlInput = window.matchMedia && window.matchMedia('(pointer: coarse)').matches ? 'touch' : 'mouse';
         const mouseIntent = { x: null, y: null };
@@ -851,6 +888,8 @@
         let airdropsCaught = 0;
         let airdropSpawned = false;
         let airdropAt = 12;
+        let extraAirdropAt = Infinity;
+        let extraAirdropSpawned = false;
         let giantBombWaves = [];
         let lastBomb = 0;
         let spawnEvery = 950;
@@ -860,6 +899,10 @@
         let victory = false;
         let awaitingVictory = false;
         let victoryDelay = 0;
+        let victoryRevealLeft = 0;
+        let resultsFadeLeft = 0;
+        let nearMissPending = 0;
+        let deathRecap = null;
         let shake = 0;
         let sceneTime = 0;
         const backgroundMotion = { x: 0 };
@@ -897,6 +940,7 @@
             });
             hudEl.classList.toggle('hidden', name !== 'play' && name !== 'pause');
             syncControlsUI();
+            syncChallengeUI();
             if (name !== 'play') bannerEl.classList.add('hidden');
 
             if (name === 'play') {
@@ -908,7 +952,8 @@
                     menu: 'playBtn',
                     howto: 'howCloseBtn',
                     pause: 'resumeBtn',
-                    end: 'againBtn'
+                    end: 'againBtn',
+                    aftermath: 'resultsBtn'
                 }[name];
                 const focusTarget = focusId && document.getElementById(focusId);
                 if (focusTarget) focusTarget.focus({ preventScroll: true });
@@ -916,7 +961,37 @@
             const activeAudio = (name === 'play' || name === 'end') && !platformPaused;
             setAudioActive(activeAudio);
             if (name === 'play' && activeAudio) startAmbience();
-            else stopAmbience();
+            else if (name !== 'aftermath') stopAmbience();
+        }
+
+        function syncChallengeUI() {
+            const selected = CHALLENGES[save.challenge];
+            document.getElementById('challengeLabel').textContent = 'Challenge: ' + selected.name.toUpperCase();
+            document.getElementById('challengeDescription').textContent = selected.description;
+            document.getElementById('challengeBtn').setAttribute('aria-label', 'Challenge: ' + selected.name + '. ' + selected.description + ' Activate to change.');
+            bestLine.textContent = 'BEST ' + challengeBest(save.challenge);
+            document.getElementById('pauseChallenge').textContent = runRules().name;
+            document.getElementById('endChallenge').textContent = runRules().name;
+            const shelf = document.getElementById('medalShelf');
+            shelf.replaceChildren();
+            for (const id of CHALLENGE_IDS) {
+                const medal = document.createElement('span');
+                const earned = save.challengeMedals[id];
+                medal.className = 'challenge-medal' + (earned ? ' earned' : '');
+                medal.textContent = CHALLENGES[id].name;
+                medal.title = CHALLENGES[id].name + ' medal: ' + (earned ? 'earned' : 'survive this challenge to earn');
+                medal.setAttribute('aria-label', medal.title);
+                shelf.appendChild(medal);
+            }
+            const helpRules = howtoReturn === 'pause' && screen === 'howto' ? runRules() : selected;
+            document.getElementById('howPickups').textContent = (helpRules.soldiers ? 'Jump over soldiers and bullets. ' : '') + (helpRules.heal ? 'Catch airdrops for extra lives.' : 'You have one life. Airdrops give points, not extra lives.');
+        }
+
+        function cycleChallenge() {
+            if (screen !== 'menu') return;
+            save.challenge = CHALLENGE_IDS[(CHALLENGE_IDS.indexOf(save.challenge) + 1) % CHALLENGE_IDS.length];
+            syncChallengeUI();
+            persistSave();
         }
 
         function setBanner(text, dur) {
@@ -969,20 +1044,17 @@
 
         function syncControlsUI() {
             const mode = activeControlMode();
+            const label = save.controls === 'touch' ? 'touch ' + save.joystickSide : save.controls;
             controlButtons.forEach((button) => {
-                button.textContent = 'Controls: ' + save.controls.toUpperCase();
-                button.setAttribute('aria-label', 'Control mode: ' + save.controls + (save.controls === 'auto' ? ', using ' + mode : '') + '. Activate to change.');
-                button.title = save.controls === 'auto' ? 'Automatically follows mouse, keyboard, or touch input' : 'Use ' + mode + ' for gameplay';
+                button.textContent = 'Controls: ' + label.toUpperCase();
+                button.setAttribute('aria-label', 'Control mode: ' + label + (save.controls === 'auto' ? ', using ' + mode : '') + '. Activate to change.');
+                button.title = save.controls === 'auto' ? 'Automatically follows mouse, keyboard, or touch input' : mode === 'touch' ? 'Joystick on the ' + save.joystickSide + ', jump button on the opposite side' : 'Use ' + mode + ' for gameplay';
             });
             document.body.dataset.controls = mode;
             jumpBtn.classList.toggle('hidden', screen !== 'play' || mode !== 'touch');
             pauseBtn.classList.toggle('hidden', screen !== 'play' || mode === 'keyboard');
             joystickEl.classList.toggle('hidden', screen !== 'play' || mode !== 'touch');
             document.body.dataset.stick = save.joystickSide;
-            stickSideButtons.forEach(button => {
-                button.textContent = 'Joystick: ' + (save.joystickSide === 'left' ? 'Left' : 'Right');
-                button.setAttribute('aria-label', button.textContent + '. Activate to switch sides.');
-            });
             document.getElementById('howControls').textContent = {
                 mouse: 'Move the mouse to steer. Click the playfield to jump.',
                 keyboard: 'Move with A/D or Left/Right. Jump with Space, W, or Up.',
@@ -996,7 +1068,13 @@
 
         function cycleControls() {
             clearInput();
-            save.controls = CONTROL_MODES[(CONTROL_MODES.indexOf(save.controls) + 1) % CONTROL_MODES.length];
+            // Keep the existing save fields, exposing touch placement through one menu option.
+            if (save.controls === 'touch' && save.joystickSide === 'right') {
+                save.joystickSide = 'left';
+            } else {
+                save.controls = CONTROL_MODES[(CONTROL_MODES.indexOf(save.controls) + 1) % CONTROL_MODES.length];
+                if (save.controls === 'touch') save.joystickSide = 'right';
+            }
             syncControlsUI();
             persistSave();
         }
@@ -2244,7 +2322,7 @@
             const target = active && audioOk ? 0.78 : 0.0001;
             masterGain.gain.cancelScheduledValues(audioCtx.currentTime);
             if (immediate) masterGain.gain.setValueAtTime(target, audioCtx.currentTime);
-            else masterGain.gain.setTargetAtTime(target, audioCtx.currentTime, active ? 0.08 : 0.025);
+            else masterGain.gain.setTargetAtTime(target, audioCtx.currentTime, active ? 0.08 : screen === 'aftermath' ? 0.3 : 0.025);
         }
 
         function makeNoiseBuffer(seconds) {
@@ -2483,7 +2561,15 @@
             save.bombGuides = typeof parsed.bombGuides === 'boolean' ? parsed.bombGuides : true;
             save.controls = CONTROL_MODES.includes(parsed.controls) ? parsed.controls : 'auto';
             save.joystickSide = parsed.joystickSide === 'left' ? 'left' : 'right';
-            return parsed.v !== 2 || typeof parsed.bombGuides !== 'boolean' || !CONTROL_MODES.includes(parsed.controls) || !['left','right'].includes(parsed.joystickSide);
+            save.challenge = CHALLENGE_IDS.includes(parsed.challenge) ? parsed.challenge : 'normal';
+            save.challengeBests = {};
+            save.challengeMedals = {};
+            for (const id of CHALLENGE_IDS) save.challengeMedals[id] = !!parsed.challengeMedals && parsed.challengeMedals[id] === true;
+            for (const id of CHALLENGE_IDS.slice(1)) {
+                const score = Number(parsed.challengeBests && parsed.challengeBests[id]);
+                save.challengeBests[id] = Number.isFinite(score) ? Math.max(0, Math.floor(score)) : 0;
+            }
+            return parsed.v !== 2 || typeof parsed.bombGuides !== 'boolean' || !CONTROL_MODES.includes(parsed.controls) || !['left','right'].includes(parsed.joystickSide) || !CHALLENGE_IDS.includes(parsed.challenge) || !parsed.challengeBests || !parsed.challengeMedals;
         }
 
         async function loadCloudSave() {
@@ -2505,6 +2591,7 @@
             syncEffectsUI();
             syncGuidesUI();
             syncControlsUI();
+            syncChallengeUI();
             syncAtmosphere();
             if (needsMigration || pendingSave) persistSave();
         }
@@ -2523,7 +2610,10 @@
                 effects: save.effects,
                 bombGuides: save.bombGuides,
                 controls: save.controls,
-                joystickSide: save.joystickSide
+                joystickSide: save.joystickSide,
+                challenge: save.challenge,
+                challengeBests: save.challengeBests,
+                challengeMedals: save.challengeMedals
             });
             if (yt.env()) {
                 try { ytgame.game.saveData(raw); } catch (err) { yt.call('health', 'logWarning'); }
@@ -2534,11 +2624,20 @@
 
         function sendBest(value) {
             const n = Math.max(0, Math.floor(value));
+            if (runChallenge !== 'normal') {
+                if (n > challengeBest(runChallenge)) {
+                    save.challengeBests[runChallenge] = n;
+                    persistSave();
+                }
+                syncChallengeUI();
+                return; // The existing platform leaderboard remains comparable: Normal only.
+            }
             if (n > save.best) {
                 save.best = n;
                 persistSave();
             }
             yt.call('engagement', 'sendScore', { value: save.best });
+            syncChallengeUI();
         }
 
         function layout() {
@@ -2681,6 +2780,7 @@
         }
 
         function configureEnemyWaves() {
+            if (runRules().soldiers === 0) { enemyWaves = []; return; }
             if (level === 5) {
                 // Two attacks, each with soldiers entering from both sides together.
                 const firstPairAt = 8 + Math.random() * 10;
@@ -2691,6 +2791,7 @@
                     { at: extraSoldierAt, sides: [Math.random() < 0.5], spawned: false },
                     { at: secondPairAt, sides: [true, false], spawned: false }
                 ];
+                addChallengeSoldiers();
                 return;
             }
 
@@ -2708,6 +2809,21 @@
                 });
                 enemyWaves.sort((a, b) => a.at - b.at);
             }
+            addChallengeSoldiers();
+        }
+
+        function addChallengeSoldiers() {
+            if (runRules().soldiers !== 2) return;
+            // Reinforcements follow each original wave rather than overlapping identical sprites.
+            const extra = enemyWaves.map(wave => ({ at: Math.min(55, wave.at + 2 + Math.random() * 3), sides: wave.sides.slice(), spawned: false }));
+            enemyWaves = enemyWaves.concat(extra).sort((a, b) => a.at - b.at);
+        }
+
+        function configureAirdrops() {
+            airdropSpawned = false;
+            airdropAt = 8 + Math.random() * 28;
+            extraAirdropSpawned = false;
+            extraAirdropAt = runRules().drops === 2 ? 42 + Math.random() * 10 : Infinity;
         }
 
         function configureGiantBombs() {
@@ -2728,10 +2844,23 @@
                 giantBombWaves.push({ at: secondAt, spawned: false });
                 giantBombWaves.sort((a, b) => a.at - b.at);
             }
+            if (runRules().extraGiants) {
+                // Bounded search: prefer a clear slot, even with an adversarial/randomly constant RNG.
+                let at = 6, bestGap = -1;
+                for (let i = 0; i < 30; i++) {
+                    const candidate = i < 20 ? 6 + Math.random() * 46 : 6 + (i - 20) * 46 / 9;
+                    const gap = Math.min(...giantBombWaves.map(wave => Math.abs(candidate - wave.at)), Math.abs(candidate - airdropAt), Math.abs(candidate - extraAirdropAt));
+                    if (gap > bestGap) { at = candidate; bestGap = gap; }
+                    if (gap >= 6) break;
+                }
+                giantBombWaves.push({ at, spawned: false });
+                giantBombWaves.sort((a, b) => a.at - b.at);
+            }
         }
 
         function resetRun() {
-            player.lives = 3;
+            runChallenge = CHALLENGE_IDS.includes(save.challenge) ? save.challenge : 'normal';
+            player.lives = runRules().lives;
             player.invuln = 0;
             player.x = (worldW - player.w) / 2;
             bombs = [];
@@ -2755,8 +2884,7 @@
             runTime = 0;
             soldiersDefeated = 0;
             airdropsCaught = 0;
-            airdropSpawned = false;
-            airdropAt = 8 + Math.random() * 28;
+            configureAirdrops();
             configureGiantBombs();
             lastBomb = 0;
             spawnEvery = 950;
@@ -2764,6 +2892,11 @@
             victory = false;
             awaitingVictory = false;
             victoryDelay = 0;
+            victoryRevealLeft = 0;
+            resultsFadeLeft = 0;
+            screens.end.style.opacity = '';
+            nearMissPending = 0;
+            deathRecap = null;
             userPaused = false;
             player.facing = 1;
             player.moving = false;
@@ -3349,6 +3482,52 @@
             scorePopups.push({ x: x, y: y, text: text, color: color || '#ffd27a', t: 1, max: 1 });
         }
 
+        function nearMissMargin() { return clamp(player.w * 0.4, 6, 20); }
+
+        function rectClearance(hazard, px = player.x, py = player.y) {
+            const dx = Math.max(px - hazard.x - hazard.w, hazard.x - px - player.w, 0);
+            const dy = Math.max(py - hazard.y - hazard.h, hazard.y - py - player.h, 0);
+            return Math.hypot(dx, dy);
+        }
+
+        function trackRectNearMiss(hazard, oldX, oldY, oldPlayerX, oldPlayerY, endPlayerX = player.x, endPlayerY = player.y) {
+            // Sample relative movement for feedback only; collision geometry remains unchanged.
+            const dx = hazard.x - oldX, dy = hazard.y - oldY;
+            const px = endPlayerX - oldPlayerX, py = endPlayerY - oldPlayerY;
+            const steps = Math.min(64, Math.max(1, Math.ceil(Math.hypot(dx - px, dy - py) / Math.max(2, nearMissMargin() / 2))));
+            for (let i = 0; i <= steps; i++) {
+                const t = i / steps;
+                const hx = oldX + dx * t, hy = oldY + dy * t;
+                const bx = oldPlayerX + px * t, by = oldPlayerY + py * t;
+                const gap = Math.hypot(Math.max(bx - hx - hazard.w, hx - bx - player.w, 0), Math.max(by - hy - hazard.h, hy - by - player.h, 0));
+                if (overlaps(hx, hy, hazard.w, hazard.h, bx, by, player.w, player.h)) hazard.nearMissInvalid = true;
+                else if (player.invuln <= 0 && gap <= nearMissMargin()) hazard.nearMiss = true;
+            }
+        }
+
+        function queueNearMiss(hazard) {
+            if (hazard.nearMissResolved || !hazard.nearMiss) return;
+            hazard.nearMissResolved = true;
+            if (!hazard.nearMissInvalid) nearMissPending++;
+        }
+
+        function showNearMiss() {
+            if (!nearMissPending || ended || player.invuln > 0) return;
+            const margin = Math.min(worldW / 2, 90);
+            let popup = scorePopups.find(p => p.closeCall && p.t > 0);
+            if (!popup) {
+                addScorePopup(0, 0, 'CLOSE CALL', '#dfc79f');
+                popup = scorePopups[scorePopups.length - 1];
+                popup.closeCall = true; popup.count = 0;
+            }
+            popup.count += nearMissPending;
+            popup.text = popup.count === 1 ? 'CLOSE CALL' : 'CLOSE CALL ×' + Math.min(99, popup.count) + (popup.count > 99 ? '+' : '');
+            popup.x = clamp(player.x + player.w / 2, margin, worldW - margin);
+            popup.y = player.y - 12;
+            popup.t = 1; popup.still = effectsAreReduced();
+            nearMissPending = 0;
+        }
+
         function addScorch(x, giant) {
             if (scorchMarks.length >= 48) scorchMarks.shift();
             scorchMarks.push({
@@ -3647,11 +3826,12 @@
             airdropSpawned = true;
         }
 
-        function explode(x, y, fromGround, giant) {
+        function explode(x, y, fromGround, giant, sourceBomb) {
             const r = bombBlastRadius(giant);
             damageUtilityPoles(x, y, r, giant);
             const life = giant ? 0.75 : 0.45;
-            explosions.push({ x: x, y: y, r: r, t: life, max: life, dmg: giant ? 2 : 1 });
+            explosions.push({ x: x, y: y, r: r, t: life, max: life, dmg: giant ? 2 : 1, giant: !!giant,
+                nearMiss: !!(sourceBomb && sourceBomb.nearMiss), nearMissInvalid: !!(sourceBomb && sourceBomb.nearMissInvalid) });
             beep('explosion', giant, x);
             const levelShakeMultiplier = 1 + (level - 1) * 0.01;
             if (!effectsAreReduced()) {
@@ -3677,14 +3857,16 @@
             }
         }
 
-        function hitPlayer(dmg, sourceX) {
+        function hitPlayer(dmg, sourceX, cause) {
             dmg = dmg || 1;
             if (player.invuln > 0 || ended) return;
             player.lives -= dmg;
+            nearMissPending = 0;
             player.invuln = INVULN;
             beep('hit', false, sourceX);
             flashScreen(sourceX);
             if (player.lives <= 0) {
+                deathRecap = { cause: cause || 'unknown', level: level, time: runTime };
                 setBanner('Down!', 1.4);
                 finish(false);
             } else if (dmg > 1) {
@@ -3721,25 +3903,57 @@
         }
 
         function finish(won) {
+            if (ended) return;
             ended = true;
             victory = won;
             awaitingVictory = false;
             const bonus = won ? (2500 + player.lives * 150) : 0;
             score += bonus;
-            const isNewBest = Math.floor(score) > save.best;
+            const newMedal = won && !save.challengeMedals[runChallenge];
+            if (won) save.challengeMedals[runChallenge] = true;
+            const isNewBest = Math.floor(score) > challengeBest(runChallenge);
             if (level > save.bestLevel) save.bestLevel = level;
             sendBest(score);
             persistSave();
-            beep(won ? 'victory' : 'gameOver');
+            if (!won) beep('gameOver');
             document.getElementById('endTitle').textContent = won ? 'You Survived' : 'Game Over';
             document.getElementById('endSub').textContent = won
                 ? 'Victory — you survived. But now you are a ghoul...'
                 : 'Lost in the final hours of the old world.';
             document.getElementById('endSub').classList.toggle('new-best', isNewBest);
             if (isNewBest) document.getElementById('endSub').textContent += ' New best!';
+            const causes = {
+                bomb: 'a falling bomb', giant_bomb: 'a falling giant bomb',
+                blast: 'a bomb blast', giant_blast: 'a giant bomb blast',
+                bullet: "a soldier’s bullet", soldier: 'contact with a soldier'
+            };
+            const recap = document.getElementById('deathRecap');
+            recap.classList.toggle('hidden', won);
+            const fatal = deathRecap || { cause: 'unknown', level, time: runTime };
+            recap.textContent = (causes[fatal.cause] ? 'Killed by ' + causes[fatal.cause] : 'Run ended') + ' — Level ' + fatal.level + ' · ' + formatRunTime(fatal.time) + ' survived';
+            const medal = document.getElementById('endMedal');
+            medal.classList.toggle('hidden', !won);
+            medal.textContent = '★ ' + (newMedal ? 'MEDAL EARNED: ' : 'CHALLENGE COMPLETE: ') + runRules().name.toUpperCase();
             renderEndStats();
-            document.getElementById('endScore').textContent = 'SCORE ' + Math.floor(score) + '   BEST ' + save.best;
+            document.getElementById('endScore').textContent = 'SCORE ' + Math.floor(score) + '   BEST ' + challengeBest(runChallenge);
+            if (won) {
+                victoryRevealLeft = VICTORY_REVEAL_TIME;
+                shake = 0;
+                player.invuln = 0;
+                showScreen('aftermath');
+            } else {
+                screens.end.style.opacity = '';
+                showScreen('end');
+            }
+        }
+
+        function revealResults() {
+            if (screen !== 'aftermath' || platformPaused) return;
+            victoryRevealLeft = 0;
+            resultsFadeLeft = effectsAreReduced() ? 0 : 0.6;
+            screens.end.style.opacity = resultsFadeLeft ? '0' : '1';
             showScreen('end');
+            beep('victory');
         }
 
         function startPlay() {
@@ -3786,6 +4000,16 @@
 
         function update(dt, now) {
             if (platformPaused) return;
+            if (ended && (screen === 'aftermath' || screen === 'end')) {
+                if (screen === 'aftermath') {
+                    victoryRevealLeft = Math.max(0, victoryRevealLeft - dt);
+                    if (victoryRevealLeft === 0) revealResults();
+                } else if (screen === 'end' && resultsFadeLeft > 0) {
+                    resultsFadeLeft = Math.max(0, resultsFadeLeft - dt);
+                    screens.end.style.opacity = String(1 - resultsFadeLeft / 0.6);
+                }
+                return;
+            }
             const pausedScene = screen === 'pause' || userPaused || (screen === 'howto' && howtoReturn === 'pause');
             if (!pausedScene) {
                 const ambientRate = screen === 'play' ? 1 : 0.28;
@@ -3807,6 +4031,7 @@
             }
 
             runTime += dt;
+            nearMissPending = 0;
             if (awaitingVictory) {
                 victoryDelay -= dt;
             } else {
@@ -3827,8 +4052,7 @@
                     backgroundBlend = 0;
                     timeLeft = LEVEL_TIME;
                     spawnEvery = Math.max(380, spawnEvery - 140);
-                    airdropSpawned = false;
-                    airdropAt = 8 + Math.random() * 28;
+                    configureAirdrops();
                     configureGiantBombs();
                     configureEnemyWaves();
                     addLevelClouds();
@@ -3851,6 +4075,7 @@
             const walkSpeed = worldW * 0.24;
             const speed = player.grounded ? walkSpeed : walkSpeed + (Math.max(walkSpeed, player.jumpAirSpeed) - walkSpeed) * player.jumpCharge;
             const prevX = player.x;
+            const prevY = player.y;
             const step = speed * dt;
             if (activeControlMode() === 'touch') {
                 if (joystick.id !== null) player.x += joystick.x * step;
@@ -3935,14 +4160,19 @@
 
             if (!awaitingVictory) {
                 lastBomb += dt * 1000;
-                const rate = spawnEvery;
+                const rate = spawnEvery / runRules().bombRate;
                 if (lastBomb >= rate) {
                     spawnBomb(false);
-                    lastBomb = 0;
+                    // Keep the fractional frame remainder so the configured rate holds at every level.
+                    lastBomb -= rate;
                 }
 
                 const elapsed = LEVEL_TIME - timeLeft;
                 if (!airdropSpawned && elapsed >= airdropAt) spawnAirdrop();
+                if (!extraAirdropSpawned && elapsed >= extraAirdropAt) {
+                    spawnAirdrop();
+                    extraAirdropSpawned = true;
+                }
                 giantBombWaves.forEach((wave) => {
                     if (wave.spawned || elapsed < wave.at) return;
                     spawnGiantBomb();
@@ -3956,12 +4186,15 @@
             }
 
             bombs = bombs.filter((b) => {
+                if (ended) return true;
                 const groundY = groundAt(b.x + b.w / 2);
+                const oldY = b.y;
                 b.y += b.speed * dt;
+                trackRectNearMiss(b, b.x, oldY, prevX, prevY);
                 for (let i = 0; i < enemies.length; i++) {
                     const en = enemies[i];
                     if (!en.dead && overlaps(b.x, b.y, b.w, b.h, en.x, en.y, en.w, en.h)) {
-                        explode(b.x + b.w / 2, b.y + b.h / 2, false, b.giant);
+                        explode(b.x + b.w / 2, b.y + b.h / 2, false, b.giant, b);
                         en.dead = true;
                         soldiersDefeated += 1;
                         score += 80;
@@ -3970,19 +4203,21 @@
                     }
                 }
                 if (player.invuln <= 0 && overlaps(b.x, b.y, b.w, b.h, player.x, player.y, player.w, player.h)) {
-                    explode(b.x + b.w / 2, b.y + b.h / 2, false, b.giant);
-                    hitPlayer(b.dmg, b.x + b.w / 2);
+                    explode(b.x + b.w / 2, b.y + b.h / 2, false, b.giant, b);
+                    hitPlayer(b.dmg, b.x + b.w / 2, b.giant ? 'giant_bomb' : 'bomb');
                     return false;
                 }
                 if (b.y + b.h >= groundY) {
                     addFloorDamage(b.x + b.w / 2, b.giant);
-                    explode(b.x + b.w / 2, groundY, true, b.giant);
+                    explode(b.x + b.w / 2, groundY, true, b.giant, b);
                     return false;
                 }
                 return true;
             });
 
+            if (ended) return;
             explosions = explosions.filter((e) => {
+                if (ended) return true;
                 e.t -= dt;
                 enemies.forEach((en) => {
                     if (en.dead) return;
@@ -4002,16 +4237,22 @@
                     const cy = player.y + player.h / 2;
                     const dxp = cx - e.x;
                     const dyp = cy - e.y;
+                    const clearance = Math.hypot(dxp, dyp) - (e.r + player.w * 0.2);
+                    if (clearance >= 0 && clearance <= Math.max(nearMissMargin(), e.r * 0.16)) e.nearMiss = true;
                     if (dxp * dxp + dyp * dyp < (e.r + player.w * 0.2) * (e.r + player.w * 0.2)) {
-                        hitPlayer(e.dmg, e.x);
+                        e.nearMissInvalid = true;
+                        hitPlayer(e.dmg, e.x, e.giant || e.dmg > 1 ? 'giant_blast' : 'blast');
                     }
-                }
+                } else if (Math.hypot(player.x + player.w / 2 - e.x, player.y + player.h / 2 - e.y) < e.r + player.w * 0.2) e.nearMissInvalid = true;
+                if (e.t <= 0) queueNearMiss(e);
                 return e.t > 0;
             });
 
+            if (ended) return;
             enemies.forEach((en) => {
-                if (en.dead) return;
+                if (en.dead || ended) return;
                 en.muzzle = Math.max(0, en.muzzle - dt);
+                const oldX = en.x, oldY = en.y;
                 const oldFloor = bodyFloor(en);
                 const onGround = en.grounded !== false && Math.abs(en.y - oldFloor) < 0.5;
                 const pcx = player.x + player.w / 2;
@@ -4029,6 +4270,11 @@
                 en.y += en.vy * dt;
                 en.grounded = en.y >= floor;
                 if (en.grounded) { en.y = floor; en.vy = 0; }
+                trackRectNearMiss(en, oldX, oldY, prevX, prevY);
+                if (rectClearance(en) > nearMissMargin()) queueNearMiss(en);
+                if (rectClearance(en) > player.w * 2) {
+                    en.nearMiss = false; en.nearMissInvalid = false; en.nearMissResolved = false;
+                }
                 // Aim at ground-relative torso height, not at jumps; adjust slowly so cover is useful.
                 const targetY = bodyFloor(player) + player.h * 0.42;
                 const aim = clamp(Math.atan2(targetY - (en.y + en.h * 0.42), Math.max(player.w * 2, Math.abs(pcx - ecx))), -0.28, 0.28);
@@ -4041,26 +4287,36 @@
                     enemyShoot(en);
                 }
                 if (player.invuln <= 0 && overlaps(en.x, en.y, en.w, en.h, player.x, player.y, player.w, player.h)) {
-                    hitPlayer(1, en.x + en.w / 2);
+                    hitPlayer(1, en.x + en.w / 2, 'soldier');
                 }
             });
             enemies = enemies.filter((en) => !en.dead);
 
+            if (ended) return;
             bullets = bullets.filter((bu) => {
+                if (ended) return true;
                 // Sweep both terrain and bodies, preventing fast shots from tunnelling through slopes.
                 const steps = Math.max(1, Math.ceil(Math.hypot(bu.vx, bu.vy || 0) * dt / Math.max(1, Math.min(player.w / 4, worldW / 256))));
                 for (let i = 0; i < steps; i++) {
+                    const oldX = bu.x, oldY = bu.y;
                     bu.x += bu.vx * dt / steps;
                     bu.y += (bu.vy || 0) * dt / steps;
-                    if (bu.y + bu.h >= groundAt(bu.x + bu.w / 2)) return false;
+                    trackRectNearMiss(bu, oldX, oldY,
+                        prevX + (player.x - prevX) * i / steps, prevY + (player.y - prevY) * i / steps,
+                        prevX + (player.x - prevX) * (i + 1) / steps, prevY + (player.y - prevY) * (i + 1) / steps);
+                    if (bu.y + bu.h >= groundAt(bu.x + bu.w / 2)) { queueNearMiss(bu); return false; }
                     if (player.invuln <= 0 && overlaps(bu.x, bu.y, bu.w, bu.h, player.x, player.y, player.w, player.h)) {
-                        hitPlayer(1, bu.x);
+                        bu.nearMissInvalid = true;
+                        hitPlayer(1, bu.x, 'bullet');
                         return false;
                     }
+                    if (rectClearance(bu) > nearMissMargin()) queueNearMiss(bu);
                 }
                 return bu.x + bu.w > -20 && bu.x < worldW + 20 && bu.y > -20 && bu.y < worldH;
             });
 
+            if (ended) return;
+            showNearMiss();
             airdrops = airdrops.filter((a) => {
                 a.y += a.speed * dt;
                 const floor = groundAt(a.x + a.w / 2) - a.h;
@@ -4069,10 +4325,10 @@
                     a.restTime = (a.restTime || 0) + dt;
                 }
                 if (overlaps(a.x, a.y, a.w, a.h, player.x, player.y, player.w, player.h)) {
-                    player.lives += 1;
+                    if (runRules().heal) player.lives += 1;
                     airdropsCaught += 1;
                     score += 120;
-                    addScorePopup(a.x + a.w / 2, a.y, '+120  +1 LIFE', '#c8e879');
+                    addScorePopup(a.x + a.w / 2, a.y, runRules().heal ? '+120  +1 LIFE' : '+120', '#c8e879');
                     for (let i = 0; i < (effectsAreReduced() ? 6 : 14); i++) {
                         pushParticle(
                             a.x + a.w / 2,
@@ -4086,7 +4342,7 @@
                         );
                     }
                     beep('pickup', false, a.x + a.w / 2);
-                    setBanner('Airdrop! +1 life', 1.6);
+                    setBanner(runRules().heal ? 'Airdrop! +1 life' : 'Airdrop! +120 points', 1.6);
                     return false;
                 }
                 // A short pickup window replaces falling through the floor; no permanent stockpiles.
@@ -4108,7 +4364,7 @@
             particles.length = liveParticleCount;
             scorePopups = scorePopups.filter((popup) => {
                 popup.t -= dt;
-                popup.y -= 24 * dt;
+                if (!popup.still) popup.y -= 24 * dt;
                 return popup.t > 0;
             });
             if (awaitingVictory && victoryDelay <= 0 && !ended && player.lives > 0) finish(true);
@@ -4395,8 +4651,8 @@
 
             const spr = soldierFrame();
             const flip = player.facing < 0;
-            if (screen === 'play' || screen === 'pause' || screen === 'howto') {
-                const hide = player.invuln > 0 && Math.floor(player.invuln * 12) % 2 === 0;
+            if (screen === 'play' || screen === 'pause' || screen === 'howto' || screen === 'aftermath' || (screen === 'end' && ended)) {
+                const hide = !ended && player.invuln > 0 && Math.floor(player.invuln * 12) % 2 === 0;
                 ctx.fillStyle = 'rgba(0,0,0,0.36)';
                 ctx.beginPath();
                 ctx.ellipse(player.x + player.w / 2, groundAt(player.x + player.w / 2) + 2, player.w * 0.5, Math.max(2, player.h * 0.06), 0, 0, Math.PI * 2);
@@ -4561,7 +4817,7 @@
         canvas.addEventListener('pointerleave', () => { if (!pointer.down) pointer.hover = false; });
 
         function navigateMenu(e) {
-            if (!['menu', 'pause', 'howto', 'end'].includes(screen) || e.ctrlKey || e.metaKey || e.altKey) return false;
+            if (!['menu', 'pause', 'howto', 'end', 'aftermath'].includes(screen) || e.ctrlKey || e.metaKey || e.altKey) return false;
             const navKeys = ['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'];
             if (!navKeys.includes(e.key)) return false;
             const buttons = Array.from(screens[screen].querySelectorAll('button:not(:disabled)'))
@@ -4611,6 +4867,8 @@
                     requestPause();
                 } else if (screen === 'end') {
                     document.getElementById('endMenuBtn').click();
+                } else if (screen === 'aftermath') {
+                    revealResults();
                 }
                 return;
             }
@@ -4635,6 +4893,7 @@
                 if (screen === 'menu') startPlay();
                 else if (screen === 'pause') requestResume();
                 else if (screen === 'end') startPlay();
+                else if (screen === 'aftermath') revealResults();
                 else if (screen === 'howto') {
                     screens.howto.classList.add('hidden');
                     if (howtoReturn === 'pause') showScreen('pause');
@@ -4651,6 +4910,7 @@
         window.addEventListener('blur', clearInput);
 
         document.getElementById('playBtn').addEventListener('click', startPlay);
+        document.getElementById('resultsBtn').addEventListener('click', revealResults);
         document.getElementById('howBtn').addEventListener('click', () => {
             howtoReturn = 'menu';
             save.seenHowTo = true;
@@ -4677,13 +4937,8 @@
         });
         guideButtons.forEach((button) => button.addEventListener('click', toggleBombGuides));
         controlButtons.forEach((button) => button.addEventListener('click', cycleControls));
+        document.getElementById('challengeBtn').addEventListener('click', cycleChallenge);
         pauseBtn.addEventListener('click', requestPause);
-        stickSideButtons.forEach(button => button.addEventListener('click', () => {
-            clearInput();
-            save.joystickSide = save.joystickSide === 'right' ? 'left' : 'right';
-            syncControlsUI();
-            persistSave();
-        }));
 
         function releaseJoystick(e) {
             if (e && e.pointerId !== joystick.id) return;

@@ -15,10 +15,10 @@ module.exports = async ({assert,game,evaluate,call,screenshot,errors}) => {
             const overlap=(a,b)=>a.x<b.right&&a.right>b.x&&a.y<b.bottom&&a.bottom>b.y;
             assert(rects.hud.x===8 && rects.hud.y===8,JSON.stringify(rects));
             assert((side==='right'?w-rects.stick.right:rects.stick.x)===8&&h-rects.stick.bottom===8,'equal joystick edge margins');
-            assert(rects.jump.x===8,'matching jump side margin');
+            assert((side==='right'?rects.jump.x:w-rects.jump.right)===8&&h-rects.jump.bottom===8,'matching opposite-side jump margins');
             assert(rects.stick.x>=0&&rects.stick.right<=w&&rects.stick.bottom<=h);
             assert(!overlap(rects.stick,rects.jump)&&!overlap(rects.stick,rects.pause)&&!overlap(rects.hud,rects.pause),JSON.stringify({w,h,side,rects}));
-            assert(rects.jump.x<30,'jump stays left');
+            assert(!overlap(rects.jump,rects.pause),'jump does not overlap pause');
             const s=await center('joystick');
             const rad=rects.stick.w*0.3;
             await game('window.xBefore=player.x');
@@ -66,7 +66,22 @@ module.exports = async ({assert,game,evaluate,call,screenshot,errors}) => {
             if((w===360||w===800)&&side==='right') await screenshot('joystick-'+w+'x'+h);
         }
     }
-    assert(await game(`(()=>{applyLoadedSave({v:1,best:321,bestLevel:3,seenHowTo:true});const old=save.joystickSide==='right'&&save.best===321;showScreen('pause');document.getElementById('pauseStickSideBtn').click();const saved=JSON.parse(window.savedData);applyLoadedSave(saved);return old&&save.joystickSide==='left'&&saved.joystickSide==='left'&&save.best===321})()`),'save migration and side persistence');
+    assert(await game(`(()=>{
+        applyLoadedSave({v:1,best:321,bestLevel:3,seenHowTo:true});
+        const old=save.joystickSide==='right'&&save.best===321;
+        for(const screenName of ['menu','pause']) {
+            showScreen(screenName);save.controls='auto';syncControlsUI();
+            const button=document.getElementById(screenName==='menu'?'controlsBtn':'pauseControlsBtn');
+            for(const label of ['MOUSE','KEYBOARD','TOUCH RIGHT','TOUCH LEFT','AUTO']) {
+                button.click();
+                if(!controlButtons.every(b=>b.textContent==='Controls: '+label))return false;
+            }
+        }
+        save.controls='touch';save.joystickSide='right';syncControlsUI();
+        document.getElementById('pauseControlsBtn').click();
+        const saved=JSON.parse(window.savedData);applyLoadedSave(saved);
+        return old&&save.controls==='touch'&&save.joystickSide==='left'&&saved.joystickSide==='left'&&save.best===321&&!document.getElementById('stickSideBtn')&&!document.getElementById('pauseStickSideBtn');
+    })()`),'combined controls cycle, legacy saves and side persistence');
     await game("save.controls='keyboard';syncControlsUI()");
     assert(await game('joystickEl.classList.contains("hidden")&&jumpBtn.classList.contains("hidden")'));
     assert.equal(errors.length,0,JSON.stringify(errors));
