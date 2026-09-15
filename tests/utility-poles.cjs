@@ -234,11 +234,12 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
         toppleUtilityPole(p,undefined,'ground');
         for(let i=0;i<900;i++){updateUtilityPoles(1/120,true);sample();}
         const stump=p.parts[0],top=p.parts[p.parts.length-1];
+        const tipsDown=p.parts.filter(q=>q.mobile).every(q=>Math.abs(q.angle)>1);
         return {frozen,maxDepth,fallen:p.state==='fallen',grounded:utilityLowestPoint(p)<=0.002,
-            shortFlop:Math.abs(stump.angle)>1,material:Math.abs(p.parts.reduce((s,q)=>s+q.hi-q.lo,0)-1)<0.00001};
+            shortFlop:Math.abs(stump.angle)>1,tipsDown,material:Math.abs(p.parts.reduce((s,q)=>s+q.hi-q.lo,0)-1)<0.00001};
     })()`);
-    assert(physics.frozen&&physics.maxDepth<0.05&&physics.fallen&&physics.grounded&&physics.shortFlop&&physics.material,JSON.stringify(physics));
-    console.log('PASS: falling poles keep direction, stay supported, and short pieces flop onto the ground');
+    assert(physics.frozen&&physics.maxDepth<0.05&&physics.fallen&&physics.grounded&&physics.shortFlop&&physics.tipsDown&&physics.material,JSON.stringify(physics));
+    console.log('PASS: falling poles keep direction, stay supported, and lie down with tips off the sky');
 
     // Preserve identity, deadlines, angles and broken attachments through a live reflow.
     await resize(360,800);

@@ -2954,18 +2954,25 @@
             pole.angle = pole.parts[pole.parts.length - 1].angle;
         }
 
+        function utilityReachPoints(part) {
+            // Hinge-local shaft corners sit at the pivot. Treating them as ground hits
+            // stops a piece almost upright, leaving the tip pointing at the sky.
+            return part.outline.filter((point) => point.length > 0.05 && point.radius > 0.05);
+        }
+
         function utilityContactAngle(part, pole) {
+            const reach = utilityReachPoints(part);
             if (pole && terrainDepth.some(depth => depth > 0)) {
-                if (part.contactRevision === terrainRevision && part.contactWidth === worldW && part.contactHeight === player.h && Math.abs(part.contactX - part.x) < 0.00001 && Math.abs(part.contactY - part.y) < 0.00001) return part.contactAngle;
+                if (part.contactGen === 2 && part.contactRevision === terrainRevision && part.contactWidth === worldW && part.contactHeight === player.h && Math.abs(part.contactX - part.x) < 0.00001 && Math.abs(part.contactY - part.y) < 0.00001) return part.contactAngle;
                 const h = player.h * UTILITY_HEIGHT;
                 const baseX = pole.nx * worldW;
-                const baseY = groundAt(baseX);
+                const baseY = groundAt(baseX) + 3;
                 const touches = angle => {
                     const s = Math.sin(angle * part.direction), c = Math.cos(angle);
-                    return part.outline.some(point => {
+                    return reach.some(point => {
                         const x = baseX + (part.x + c * point.x + s * point.length) * h;
                         const y = baseY + (part.y + s * point.x - c * point.length) * h;
-                        return y > groundAt(x) + 0.01;
+                        return y > groundAt(x) + 3.01;
                     });
                 };
                 let lo = 0, hi = Math.PI;
@@ -2978,15 +2985,15 @@
                     const mid = (lo + hi) / 2;
                     if (touches(mid)) hi = mid; else lo = mid;
                 }
-                part.contactRevision = terrainRevision; part.contactWidth = worldW; part.contactHeight = player.h;
+                part.contactGen = 2; part.contactRevision = terrainRevision; part.contactWidth = worldW; part.contactHeight = player.h;
                 part.contactX = part.x; part.contactY = part.y;
                 part.contactAngle = lo * part.direction;
                 return part.contactAngle;
             }
             let target = Math.PI;
             const clearance = Math.max(0, -part.y);
-            for (const point of part.outline) {
-                if (clearance > point.radius || point.radius < 0.001) continue;
+            for (const point of reach) {
+                if (clearance > point.radius) continue;
                 const contact = Math.acos(clamp(-clearance / point.radius, -1, 1)) - point.phase;
                 if (contact >= 0 && contact < target) target = contact;
             }

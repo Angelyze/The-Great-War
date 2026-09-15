@@ -114,7 +114,8 @@ module.exports = async ({ assert, game, resize, screenshot, errors }) => {
             const supports=utility.poles.every(p=>utilityLowestPoint(p)<0.002);
             const cables=utility.wires.every(w=>w.nodes.every(n=>n.y<=groundAt(n.x)+3.1));
             const intactMaterial=utility.poles.every(p=>Math.abs(p.parts.reduce((s,q)=>s+q.hi-q.lo,0)-1)<0.00001);
-            draw();return {supports,cables,intactMaterial};
+            const tipsDown=utility.poles.every(p=>p.parts.filter(q=>q.mobile).every(q=>Math.abs(q.angle)>1));
+            draw();return {supports,cables,intactMaterial,tipsDown};
         })()`);
         assert(Object.values(poles).every(Boolean),JSON.stringify({w,h,poles}));
         await game(`player.x=worldW*0.4-player.w/2;player.y=bodyFloor(player);player.invuln=0;
