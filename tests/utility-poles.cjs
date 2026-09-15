@@ -90,6 +90,10 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
         const { data } = await call('Page.captureScreenshot', { format: 'png' });
         fs.writeFileSync(path.join(artifactDir, name + '.png'), Buffer.from(data, 'base64'));
     }
+    if (process.argv.includes('--menu-audio-only')) {
+        await require('./menu-audio.cjs')({ assert, game, evaluate, call, errors, resize });
+        return;
+    }
     if (process.argv.includes('--feedback-only')) {
         await require('./feedback.cjs')({ assert, game, evaluate, call, screenshot, errors, resize });
         console.log('Screenshots: '+artifactDir);

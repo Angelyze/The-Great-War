@@ -752,6 +752,7 @@
         let audioOk = true;
         let audioCtx = null;
         let masterGain = null;
+        let menuGain = null;
         let ambienceNodes = [];
         let ambienceControls = null;
         let ambienceActive = false;
@@ -2279,6 +2280,9 @@
                 masterGain = audioCtx.createGain();
                 masterGain.gain.value = 0.0001;
                 masterGain.connect(audioCtx.destination);
+                menuGain = audioCtx.createGain();
+                menuGain.gain.value = audioOk && !platformPaused ? 0.78 : 0;
+                menuGain.connect(audioCtx.destination);
             }
             if (audioCtx.state === 'suspended' && !platformPaused) {
                 audioCtx.resume().catch(function () {});
@@ -2288,10 +2292,39 @@
 
         function setAudioActive(active, immediate) {
             if (!audioCtx || !masterGain) return;
+            if (menuGain) {
+                menuGain.gain.cancelScheduledValues(audioCtx.currentTime);
+                menuGain.gain.value = audioOk && !platformPaused ? 0.78 : 0;
+            }
             const target = active && audioOk ? 0.78 : 0.0001;
             masterGain.gain.cancelScheduledValues(audioCtx.currentTime);
             if (immediate) masterGain.gain.setValueAtTime(target, audioCtx.currentTime);
             else masterGain.gain.setTargetAtTime(target, audioCtx.currentTime, active ? 0.08 : screen === 'aftermath' ? 0.3 : 0.025);
+        }
+
+        function playMenuClick() {
+            if (!audioOk || platformPaused) return;
+            const audio = ensureAudio();
+            if (!audio || !menuGain) return;
+            const play = () => {
+                if (!audioOk || platformPaused || audio.state !== 'running') return;
+                const now = audio.currentTime;
+                const tone = audio.createOscillator();
+                const envelope = audio.createGain();
+                tone.type = 'sine';
+                tone.frequency.setValueAtTime(640, now);
+                tone.frequency.exponentialRampToValueAtTime(420, now + 0.06);
+                envelope.gain.setValueAtTime(0.0001, now);
+                envelope.gain.exponentialRampToValueAtTime(effectsAreReduced() ? 0.07 : 0.1, now + 0.005);
+                envelope.gain.exponentialRampToValueAtTime(0.0001, now + 0.07);
+                tone.connect(envelope);
+                envelope.connect(menuGain);
+                tone.onended = () => { tone.disconnect(); envelope.disconnect(); };
+                tone.start(now);
+                tone.stop(now + 0.08);
+            };
+            if (audio.state === 'running') play();
+            else audio.resume().then(play).catch(function () {});
         }
 
         function makeNoiseBuffer(seconds) {
@@ -4977,6 +5010,14 @@
             if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = false;
         });
         window.addEventListener('blur', clearInput);
+
+        // Native click covers mouse, touch, keyboard and assistive activation once.
+        // Capture before button actions change screens or hide the activated control.
+        document.addEventListener('click', (e) => {
+            const button = e.target.closest && e.target.closest('button');
+            if (!button || button.disabled || button === jumpBtn || !button.getClientRects().length) return;
+            if (button === pauseBtn || button.closest('.panel, #aftermath')) playMenuClick();
+        }, true);
 
         document.getElementById('playBtn').addEventListener('click', startPlay);
         document.getElementById('resultsBtn').addEventListener('click', revealResults);
