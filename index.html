@@ -753,6 +753,10 @@
         let audioCtx = null;
         let masterGain = null;
         let menuGain = null;
+        const activeSoundEffects = new Set();
+        let soundEpoch = 0;
+        let menuSoundEpoch = 0;
+        let stopMenuSound = null;
         let ambienceNodes = [];
         let ambienceControls = null;
         let ambienceActive = false;
@@ -900,6 +904,7 @@
         const playerRims = new WeakMap();
 
         function showScreen(name) {
+            if (screen !== name) stopSoundEffects();
             clearInput();
             screen = name;
             document.body.dataset.screen = name;
@@ -2291,6 +2296,11 @@
         }
 
         function setAudioActive(active, immediate) {
+            if (!audioOk || platformPaused) {
+                stopSoundEffects();
+                menuSoundEpoch++;
+                if (stopMenuSound) stopMenuSound();
+            }
             if (!audioCtx || !masterGain) return;
             if (menuGain) {
                 menuGain.gain.cancelScheduledValues(audioCtx.currentTime);
@@ -2304,10 +2314,12 @@
 
         function playMenuClick() {
             if (!audioOk || platformPaused) return;
+            const epoch = ++menuSoundEpoch;
+            if (stopMenuSound) stopMenuSound();
             const audio = ensureAudio();
             if (!audio || !menuGain) return;
             const play = () => {
-                if (!audioOk || platformPaused || audio.state !== 'running') return;
+                if (!audioOk || platformPaused || audio.state !== 'running' || epoch !== menuSoundEpoch) return;
                 const now = audio.currentTime;
                 const tone = audio.createOscillator();
                 const envelope = audio.createGain();
@@ -2319,7 +2331,13 @@
                 envelope.gain.exponentialRampToValueAtTime(0.0001, now + 0.07);
                 tone.connect(envelope);
                 envelope.connect(menuGain);
-                tone.onended = () => { tone.disconnect(); envelope.disconnect(); };
+                const cleanup = () => {
+                    tone.disconnect(); envelope.disconnect();
+                    if (stopMenuSound === stop) stopMenuSound = null;
+                };
+                const stop = () => { try { tone.stop(); } catch (err) {} cleanup(); };
+                stopMenuSound = stop;
+                tone.onended = cleanup;
                 tone.start(now);
                 tone.stop(now + 0.08);
             };
@@ -2418,22 +2436,41 @@
             return panner;
         }
 
+        function stopSoundEffects() {
+            soundEpoch++;
+            for (const stop of activeSoundEffects) stop();
+        }
+
         function beep(type, giant, x, effectDuration) {
             if (!audioOk || platformPaused) return;
+            const epoch = soundEpoch;
             const ctx = ensureAudio();
             if (!ctx) return;
             const play = function () {
-                if (!audioOk || !audioCtx || platformPaused || (screen !== 'play' && screen !== 'end')) return;
+                const resultSound = type === 'victory' || type === 'gameOver';
+                if (!audioOk || !audioCtx || platformPaused || epoch !== soundEpoch || screen !== (resultSound ? 'end' : 'play')) return;
                 const t0 = audioCtx.currentTime;
                 const spatial = spatialDestination(x);
                 const dest = audioCtx.createGain();
                 dest.gain.value = 1;
                 dest.connect(spatial);
+                const nodes = [dest];
+                const sources = [];
+                let cleanupTimer;
+                const stop = () => {
+                    clearTimeout(cleanupTimer);
+                    for (const source of sources) { try { source.stop(); } catch (err) {} }
+                    for (const node of nodes) node.disconnect();
+                    if (spatial !== masterGain) spatial.disconnect();
+                    activeSoundEffects.delete(stop);
+                };
+                activeSoundEffects.add(stop);
                 const volumeScale = effectsAreReduced() ? 0.7 : 1;
                 function sine(f0, f1, dur, vol, delay, tap) {
                     const t = t0 + (delay || 0);
                     const o = audioCtx.createOscillator();
                     const g = audioCtx.createGain();
+                    nodes.push(o, g); sources.push(o);
                     o.type = 'sine';
                     o.frequency.setValueAtTime(f0, t);
                     if (f1) o.frequency.exponentialRampToValueAtTime(Math.max(25, f1), t + dur);
@@ -2470,6 +2507,7 @@
                     f.frequency.setValueAtTime(startCut, t);
                     f.frequency.exponentialRampToValueAtTime(Math.max(60, endCut), t + dur);
                     const g = audioCtx.createGain();
+                    nodes.push(src, f, g); sources.push(src);
                     g.gain.setValueAtTime(vol * volumeScale, t);
                     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
                     src.connect(f);
@@ -2494,6 +2532,7 @@
                     const wet = audioCtx.createGain();
                     wet.gain.value = (giant ? 0.55 : 0.38) + Math.random() * 0.25;
                     const lp = audioCtx.createBiquadFilter();
+                    nodes.push(delay, fb, wet, lp);
                     lp.type = 'lowpass';
                     lp.frequency.value = 240 + Math.random() * 220;
                     delay.connect(fb);
@@ -2529,6 +2568,7 @@
                     function wail(fLo, fHi, vol, wave) {
                         const o = audioCtx.createOscillator();
                         const g = audioCtx.createGain();
+                        nodes.push(o, g); sources.push(o);
                         o.type = wave;
                         o.frequency.setValueAtTime(fLo, t0);
                         o.frequency.linearRampToValueAtTime(fHi, t0 + dur * 0.48);
@@ -2561,12 +2601,7 @@
                     burst(0.45, 0.2, 'lowpass', 700, 80, 0, 'pink');
                     sine(90, 36, 0.5, 0.18);
                 }
-                setTimeout(function () {
-                    try { dest.disconnect(); } catch (err) {}
-                    if (spatial !== masterGain) {
-                        try { spatial.disconnect(); } catch (err) {}
-                    }
-                }, 5000);
+                cleanupTimer = setTimeout(stop, 5000);
             };
             if (ctx.state === 'running') play();
             else ctx.resume().then(play).catch(function () {});
@@ -2881,6 +2916,8 @@
         }
 
         function resetRun() {
+            stopSoundEffects();
+            stopAmbience();
             runChallenge = CHALLENGE_IDS.includes(save.challenge) ? save.challenge : 'normal';
             player.lives = runRules().lives;
             player.invuln = 0;
@@ -4011,7 +4048,6 @@
             if (level > save.bestLevel) save.bestLevel = level;
             sendBest(score);
             persistSave();
-            if (!won) beep('gameOver');
             document.getElementById('endTitle').textContent = won ? 'You Survived' : 'Game Over';
             document.getElementById('endSub').textContent = won
                 ? 'Victory — you survived. But now you are a ghoul...'
@@ -4041,6 +4077,7 @@
             } else {
                 screens.end.style.opacity = '';
                 showScreen('end');
+                beep('gameOver');
             }
         }
 
@@ -5016,6 +5053,8 @@
         document.addEventListener('click', (e) => {
             const button = e.target.closest && e.target.closest('button');
             if (!button || button.disabled || button === jumpBtn || !button.getClientRects().length) return;
+            // Results already have a victory cue; don't stack a click on that cue.
+            if (button.id === 'resultsBtn') return;
             if (button === pauseBtn || button.closest('.panel, #aftermath')) playMenuClick();
         }, true);
 
@@ -5166,7 +5205,7 @@
                     audioOk = !!on;
                     const activeAudio = (screen === 'play' || screen === 'end') && !platformPaused;
                     setAudioActive(activeAudio, !audioOk);
-                    if (activeAudio && screen === 'play') startAmbience();
+                    if (audioOk && activeAudio && screen === 'play') startAmbience();
                     else if (!audioOk) stopAmbience();
                 });
                 yt.call('system', 'onPause', () => {
