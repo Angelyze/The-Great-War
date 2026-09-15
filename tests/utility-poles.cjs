@@ -90,6 +90,10 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
         const { data } = await call('Page.captureScreenshot', { format: 'png' });
         fs.writeFileSync(path.join(artifactDir, name + '.png'), Buffer.from(data, 'base64'));
     }
+    if (process.argv.includes('--detachment-only')) {
+        await require('./pole-detachment.cjs')({ assert, game, evaluate, call, errors, resize, screenshot });
+        return;
+    }
     if (process.argv.includes('--menu-audio-only')) {
         await require('./menu-audio.cjs')({ assert, game, evaluate, call, errors, resize });
         return;
@@ -200,7 +204,9 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
                 const base=p.stage==='base'&&p.parts.length===3;
                 const preserved=p.parts[2]===upper&&pose.every((v,i)=>Math.abs(v-[upper.x,upper.y,upper.angle][i])<0.0001);
                 for(let i=0;i<600;i++)updateUtilityPoles(1/120,true);
-                damageUtilityPoles(x,y,r,true);
+                // Exercise the existing root-collapse stage directly; giant hits can now
+                // detach an older crack first (covered by pole-detachment.cjs).
+                toppleUtilityPole(p,x,'ground');
                 const released=p.stage==='ground'&&p.parts.every(part=>part.mobile);
                 for(let i=0;i<900;i++)updateUtilityPoles(1/120,true);
                 // Crossarms/transformers can prop a grounded shaft slightly above horizontal.
@@ -280,13 +286,13 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
         spawnBomb(false);const bomb=bombs[0];bomb.x=worldW-bomb.w;const y=bomb.y;
         update(1/60,0);const grace=awaitingVictory&&!ended&&bombs.includes(bomb)&&bomb.y>y;
         enemyWaves=[{at:0,sides:[true],spawned:false}];giantBombWaves=[{at:0,spawned:false}];airdropSpawned=false;airdropAt=0;
-        for(let i=0;i<290;i++)update(1/60,i*16);
+        for(let i=0;i<Math.round(VICTORY_GRACE_TIME*60)-10;i++)update(1/60,i*16);
         const waiting=!ended&&enemies.length===0&&airdrops.length===0&&!giantBombWaves[0].spawned;
         for(let i=0;i<15;i++)update(1/60,i*16);
         const won=ended&&victory;
         resetRun();showScreen('play');level=5;timeLeft=0.001;update(1/60,0);player.lives=1;player.invuln=0;hitPlayer(1,player.x);
         return grace&&waiting&&won&&ended&&!victory;
-    })()`));
+    })()`),'configured victory grace and lethal final damage');
 
     await resize(1280,720);
     assert(await game(`(() => {

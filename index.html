@@ -3019,7 +3019,8 @@
         function positionUtilityParts(pole) {
             let x = 0, y = -pole.lift;
             for (const part of pole.parts) {
-                part.x = x; part.y = y;
+                if (part.detached) { x = part.x; y = part.y; }
+                else { part.x = x; part.y = y; }
                 x += Math.sin(part.angle) * (part.hi - part.lo);
                 y -= Math.cos(part.angle) * (part.hi - part.lo);
             }
@@ -3083,7 +3084,7 @@
                     id, nx, seed: seed + id * 71, cosmetic: 0, structural: 0, fatigue: 0,
                     deadline: rank < 3 ? 165 + rank * 60 + crackNoise(seed, id + 20) * 10 - 5 : Infinity,
                     direction: id === 0 ? 1 : id === 3 ? -1 : (crackNoise(seed, id + 40) < 0.5 ? -1 : 1),
-                    angle: 0, state: 'standing', stage: 'intact', lift: 0, parts: [],
+                    angle: 0, state: 'standing', stage: 'intact', lift: 0, parts: [], directGiantHits: 0, crackSequence: 0,
                     baseBreak: Math.round((0.11 + crackNoise(seed, id + 55) * 0.14) * 256) / 256,
                     middleBreak: Math.round((0.43 + crackNoise(seed, id + 65) * 0.19) * 256) / 256,
                     cache: null, cacheDamage: -1
@@ -3206,6 +3207,10 @@
                 const fallDir = old.mobile ? old.direction : direction;
                 const lower = makeUtilityPart(pole, old.lo, cut, old.angle, old.mobile, old.direction, old.mobile ? old : null);
                 const upper = makeUtilityPart(pole, cut, old.hi, old.angle, true, fallDir, old);
+                lower.crackOrder = old.crackOrder;
+                lower.crackDamage = old.crackDamage;
+                upper.crackOrder = ++pole.crackSequence;
+                upper.crackDamage = 0;
                 pole.parts.splice(index, 1, lower, upper);
                 pole.fracture = cut;
             }
@@ -3303,6 +3308,66 @@
             return Math.hypot(x - ax - u * dx, y - ay - u * dy);
         }
 
+        function detachOldUtilityCrack(pole, sourceX, damage) {
+            // The creating strike opens the crack; one more direct hit (or equivalent
+            // accumulated splash) severs it. This runs before this strike creates new hinges.
+            // Stop at existing debris: hits on the stump cannot detach cracks in a loose piece.
+            let oldest = null;
+            for (const part of pole.parts) {
+                if (part.detached) break;
+                if (part.lo <= 0 || !Number.isFinite(part.crackOrder)) continue;
+                part.crackDamage = Math.min(1, (part.crackDamage || 0) + damage);
+                if (part.crackDamage < 1 - 1e-9) continue;
+                if (!oldest || part.crackOrder < oldest.crackOrder) oldest = part;
+            }
+            if (!oldest) return false;
+            const h = player.h * UTILITY_HEIGHT;
+            const x = pole.nx * worldW + oldest.x * h;
+            const y = groundAt(pole.nx * worldW) + 3 + oldest.y * h;
+            oldest.detached = true;
+            oldest.mobile = true;
+            oldest.settled = false;
+            oldest.vx = (x === sourceX ? pole.direction : Math.sign(x - sourceX)) * 0.38;
+            oldest.vy = -0.24;
+            oldest.velocity = oldest.direction * Math.max(0.2, Math.abs(oldest.velocity));
+            pole.state = 'falling';
+            utilityBurst(x, y, pole.seed + pole.directGiantHits, false);
+            // The crown leaves its insulators; each cable keeps its existing free end.
+            for (const wire of utility.wires) {
+                if (wire.left === pole.id) breakUtilityWire(wire, 1);
+                else if (wire.right === pole.id) breakUtilityWire(wire, WIRE_NODES - 3);
+            }
+            return true;
+        }
+
+        function settleDetachedUtilityParts(pole, step) {
+            const h = player.h * UTILITY_HEIGHT;
+            const bx = pole.nx * worldW, gy = groundAt(bx) + 3;
+            let moving = false;
+            for (let i = 0; i < pole.parts.length; i++) {
+                const root = pole.parts[i];
+                if (!root.detached) continue;
+                let penetration = -Infinity;
+                for (let j = i; j < pole.parts.length && (j === i || !pole.parts[j].detached); j++) {
+                    const part = pole.parts[j], s = Math.sin(part.angle), c = Math.cos(part.angle);
+                    for (const point of part.outline) {
+                        const x = bx + (part.x + c * point.x + s * point.length) * h;
+                        const y = gy + (part.y + s * point.x - c * point.length) * h;
+                        penetration = Math.max(penetration, (y - groundAt(x) - 3) / h);
+                    }
+                }
+                if (penetration >= 0) {
+                    root.y -= penetration;
+                    root.vy = 0;
+                    root.vx *= Math.exp(-step * 8);
+                    if (Math.abs(root.vx) < 0.005) root.vx = 0;
+                    positionUtilityParts(pole);
+                }
+                if (Math.abs(root.vx) > 0.005 || Math.abs(root.vy) > 0.005) moving = true;
+            }
+            return moving;
+        }
+
         function damageUtilityPoles(x, y, radius, giant) {
             const h = player.h * UTILITY_HEIGHT;
             for (const pole of utility.poles) {
@@ -3310,6 +3375,7 @@
                 const gy = groundAt(bx) + 3;
                 let distance = Infinity;
                 for (const part of pole.parts) {
+                    if (part.detached) break;
                     const ax = bx + part.x * h, ay = gy + part.y * h;
                     distance = Math.min(distance, pointSegmentDistance(x, y, ax, ay,
                         ax + Math.sin(part.angle) * (part.hi - part.lo) * h,
@@ -3318,6 +3384,13 @@
                 if (distance > radius) continue;
                 const influence = 1 - distance / radius;
                 pole.cosmetic = Math.min(1, pole.cosmetic + (giant ? 0.55 : 0.065) * (0.25 + influence));
+                // Count close strikes against the remaining shaft, not grazing splash or loose debris.
+                if (giant) {
+                    const direct = distance <= radius * 0.28;
+                    if (direct) pole.directGiantHits++;
+                    const crackDamage = direct ? 1 : 0.3 + influence * 0.9;
+                    if (detachOldUtilityCrack(pole, x, crackDamage)) continue;
+                }
                 if (giant && pole.stage !== 'ground') {
                     const wasWeakened = pole.structural;
                     pole.structural = Math.min(1, pole.structural + 0.3 + influence * 0.9);
@@ -3431,11 +3504,17 @@
                     pole.lift = pole.stage === 'ground' ? pole.lift + (1/64 - pole.lift) * step * 7 : Math.abs(Math.sin(pole.parts[0].angle)) / 64;
                     let anchorX = 0, anchorY = -pole.lift, moving = false;
                     for (const part of pole.parts) {
-                        part.x = anchorX; part.y = anchorY;
+                        if (part.detached) {
+                            part.x += part.vx * step;
+                            part.vy += 2.1 * step;
+                            part.y += part.vy * step;
+                            anchorX = part.x; anchorY = part.y;
+                        } else { part.x = anchorX; part.y = anchorY; }
                         if (stepUtilityPart(part, pole, step, reduced)) moving = true;
                         anchorX += Math.sin(part.angle) * (part.hi - part.lo);
                         anchorY -= Math.cos(part.angle) * (part.hi - part.lo);
                     }
+                    if (settleDetachedUtilityParts(pole, step)) moving = true;
                     pole.angle = pole.parts[pole.parts.length - 1].angle;
                     pole.state = pole.stage === 'intact' ? 'standing' : moving ? 'falling' : 'fallen';
                 }
