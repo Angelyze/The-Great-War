@@ -104,10 +104,17 @@ module.exports = async ({assert,game,evaluate,call,screenshot,errors,resize}) =>
     assert(await game(`(()=>{
         applyLoadedSave({v:2,best:9000,challenge:'impossible',challengeBests:{impossible:1234},controls:'touch',joystickSide:'left'});
         const legacy=CHALLENGE_IDS.every(id=>!save.challengeMedals[id])&&save.best===9000&&save.challengeBests.impossible===1234;
-        for(const id of CHALLENGE_IDS){save.challenge=id;resetRun();finish(true);const scoreOnce=score;finish(true);if(score!==scoreOnce)return false;}
+        for(const id of CHALLENGE_IDS){
+            save.challenge=id;resetRun();finish(true);
+            const complete=CHALLENGE_IDS.every(id=>save.challengeMedals[id]);
+            const badge=document.querySelector('#medalShelf .challenge-medal:last-child');
+            if(badge.textContent!=='100%'||badge.classList.contains('earned')!==complete)return false;
+            if(document.getElementById('endMedal').textContent.includes('100%')!==complete)return false;
+            const scoreOnce=score;finish(true);if(score!==scoreOnce)return false;
+        }
         const all=CHALLENGE_IDS.every(id=>save.challengeMedals[id]===true);
         const raw=window.savedData;applyLoadedSave(raw);showScreen('menu');
-        const restored=CHALLENGE_IDS.every(id=>save.challengeMedals[id]===true)&&document.querySelectorAll('.challenge-medal.earned').length===4;
+        const restored=CHALLENGE_IDS.every(id=>save.challengeMedals[id]===true)&&document.querySelectorAll('.challenge-medal.earned').length===5;
         resetRun();const persistent=CHALLENGE_IDS.every(id=>save.challengeMedals[id]===true);
         return legacy&&all&&restored&&persistent;
     })()`));

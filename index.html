@@ -700,6 +700,7 @@
         let runChallenge = 'normal';
         const runRules = () => CHALLENGES[runChallenge];
         const challengeBest = id => id === 'normal' ? save.best : (save.challengeBests[id] || 0);
+        const allChallengesComplete = () => CHALLENGE_IDS.every(id => save.challengeMedals[id] === true);
 
         const screens = {
             loading: document.getElementById('loading'),
@@ -940,12 +941,13 @@
             document.getElementById('endChallenge').textContent = runRules().name;
             const shelf = document.getElementById('medalShelf');
             shelf.replaceChildren();
-            for (const id of CHALLENGE_IDS) {
+            const medals = CHALLENGE_IDS.map(id => ({ name: CHALLENGES[id].name, earned: save.challengeMedals[id], requirement: 'survive this challenge to earn' }));
+            medals.push({ name: '100%', earned: allChallengesComplete(), requirement: 'earn all four challenge badges to unlock' });
+            for (const { name, earned, requirement } of medals) {
                 const medal = document.createElement('span');
-                const earned = save.challengeMedals[id];
                 medal.className = 'challenge-medal' + (earned ? ' earned' : '');
-                medal.textContent = CHALLENGES[id].name;
-                medal.title = CHALLENGES[id].name + ' medal: ' + (earned ? 'earned' : 'survive this challenge to earn');
+                medal.textContent = name;
+                medal.title = name + ' medal: ' + (earned ? 'earned' : requirement);
                 medal.setAttribute('aria-label', medal.title);
                 shelf.appendChild(medal);
             }
@@ -3992,7 +3994,9 @@
             const bonus = won ? (2500 + player.lives * 150) : 0;
             score += bonus;
             const newMedal = won && !save.challengeMedals[runChallenge];
+            const hadAllMedals = allChallengesComplete();
             if (won) save.challengeMedals[runChallenge] = true;
+            const newCompletionMedal = won && !hadAllMedals && allChallengesComplete();
             const isNewBest = Math.floor(score) > challengeBest(runChallenge);
             if (level > save.bestLevel) save.bestLevel = level;
             sendBest(score);
@@ -4016,6 +4020,7 @@
             const medal = document.getElementById('endMedal');
             medal.classList.toggle('hidden', !won);
             medal.textContent = '★ ' + (newMedal ? 'MEDAL EARNED: ' : 'CHALLENGE COMPLETE: ') + runRules().name.toUpperCase();
+            if (newCompletionMedal) medal.textContent += ' · ★ MEDAL EARNED: 100%';
             renderEndStats();
             document.getElementById('endScore').textContent = 'SCORE ' + Math.floor(score) + '   BEST ' + challengeBest(runChallenge);
             if (won) {
