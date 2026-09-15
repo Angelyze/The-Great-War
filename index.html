@@ -334,6 +334,18 @@
             text-shadow: 3px 3px 0 #3a1a00, 0 0 12px rgba(255, 144, 0, 0.5);
             max-width: 90vw;
         }
+        #banner.giant-warning {
+            color: #ff3a12;
+            letter-spacing: 0.18em;
+            text-shadow: 3px 3px 0 #3a0600, 0 0 18px rgba(255, 40, 0, 0.85), 0 0 4px #ff9000;
+        }
+        body:not(.reduced-fx) #banner.giant-warning {
+            animation: giantWarnPulse 0.38s ease-in-out infinite alternate;
+        }
+        @keyframes giantWarnPulse {
+            from { opacity: 1; filter: brightness(1); }
+            to { opacity: 0.62; filter: brightness(1.35); }
+        }
         .result-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -426,75 +438,49 @@
         @media (min-width: 900px) and (orientation: landscape) {
             .panel { width: min(70vw, 640px); }
         }
-        /* Compact, touch-friendly chrome; the desktop HUD keeps its original styling. */
-        body[data-ui="compact"] #hud {
-            top: 8px;
-            left: calc(8px + var(--safe-left));
-            right: calc(8px + var(--safe-right));
-            margin: 0 auto;
-            max-width: none;
-            grid-template-columns: auto minmax(0, 1fr);
-            grid-template-areas: "timer status" "level level";
+        /* Compact chrome is for touch controls only. Menus go full-screen; the HUD
+           keeps the same boxed level / timer / lives layout as desktop. */
+        body[data-ui="compact"] .overlay {
+            padding: 0;
+            flex-direction: column;
             align-items: stretch;
-            gap: 0;
-            border: 1px solid rgba(255,144,0,0.65);
-            background: rgba(12,9,5,0.8);
-            box-shadow: 1px 2px 0 rgba(20,12,4,0.55);
-            text-shadow: 1px 1px 0 #000;
+            justify-content: flex-start;
         }
-        body[data-ui="compact"] .hud-block {
-            min-height: 30px;
-            padding: 5px 8px;
-            border: 0;
-            background: none;
-            box-shadow: none;
-            font-size: 12px;
-            letter-spacing: 0.035em;
-        }
-        body[data-ui="compact"] #hudLeft {
+        body[data-ui="compact"] .overlay > .panel {
             width: 100%;
             max-width: none;
-            min-height: 24px;
-            justify-self: stretch;
-            display: block;
-            border-top: 1px solid rgba(255,144,0,0.23);
-            color: #d4b27d;
-            font-size: 12px;
-            text-align: center;
-            white-space: normal;
+            height: 100%;
+            max-height: none;
+            border-width: 0;
+            background: rgba(12, 8, 5, 0.96);
+            box-shadow:
+                inset 0 0 0 3px var(--amber),
+                inset 0 0 0 6px #4a2200,
+                inset 0 0 40px rgba(255, 144, 0, 0.08);
+            padding: max(16px, calc(14px + var(--safe-top))) max(16px, calc(14px + var(--safe-right))) max(16px, calc(14px + var(--safe-bottom))) max(16px, calc(14px + var(--safe-left)));
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            justify-content: safe center;
         }
-        body[data-ui="compact"] #hudMid { justify-self: stretch; color: #ffd28d; font-size: 14px; }
-        body[data-ui="compact"] #hudRight {
-            justify-self: stretch;
-            justify-content: space-between;
-            gap: 8px;
-            border-left: 1px solid rgba(255,144,0,0.23);
+        body[data-ui="compact"] .overlay > .panel > * { flex-shrink: 0; }
+        body[data-ui="compact"] .overlay > .panel::before {
+            top: 10px;
+            left: 10px;
         }
-        body[data-ui="compact"] .hud-gap { display: none; }
-        body[data-ui="compact"] #livesIcons { gap: 2px; flex-shrink: 0; }
-        body[data-ui="compact"] #livesIcons canvas { width: 14px; height: 14px; }
-        body[data-ui="compact"] #scoreHud { white-space: nowrap; font-size: 12px; }
-        body[data-ui="compact"] #scoreHud::before {
-            content: 'SCORE';
-            margin-right: 5px;
-            color: #a78b61;
-            font-size: 9px;
-            letter-spacing: 0.06em;
+        body[data-ui="compact"] .overlay > .panel::after {
+            right: 10px;
+            bottom: 10px;
         }
-        body[data-ui="compact"] #banner {
-            position: absolute;
-            top: calc(100% + 6px);
-            width: max-content;
-            max-width: 100%;
-            padding: 5px 9px;
-            border-bottom: 1px solid rgba(255,144,0,0.5);
-            background: rgba(12,9,5,0.74);
-            color: #f2c685;
-            font-size: 12px;
-            line-height: 1.3;
-            letter-spacing: 0.035em;
-            text-transform: none;
-            text-shadow: 1px 1px 0 #000;
+        @media (orientation: landscape) and (max-height: 500px) {
+            body[data-ui="compact"] .overlay > .panel {
+                padding: max(10px, calc(8px + var(--safe-top))) max(12px, calc(8px + var(--safe-right))) max(10px, calc(8px + var(--safe-bottom))) max(12px, calc(8px + var(--safe-left)));
+            }
+        }
+        @media (max-width: 359px) {
+            .hud-block { padding-left: 6px; padding-right: 6px; font-size: 11px; gap: 4px; }
+            .hud-gap { display: none; }
+            #livesIcons canvas, #livesIcons img { width: 14px; height: 14px; }
         }
         body[data-ui="compact"] #jumpBtn,
         body[data-ui="compact"] #pauseBtn {
@@ -541,27 +527,6 @@
             background: var(--amber-hot);
             color: var(--ink);
         }
-        @media (orientation: landscape) and (min-width: 560px) {
-            body[data-ui="compact"] #hud {
-                grid-template-columns: minmax(0, 1.15fr) auto minmax(0, 1fr);
-                grid-template-areas: "level timer status";
-            }
-            body[data-ui="compact"] #hudLeft {
-                display: flex;
-                align-items: center;
-                border-top: 0;
-                text-align: left;
-            }
-            body[data-ui="compact"] #hudMid { border-left: 1px solid rgba(255,144,0,0.23); }
-        }
-        @media (max-width: 359px) {
-            body[data-ui="compact"] #hud {
-                left: calc(8px + var(--safe-left));
-                right: calc(8px + var(--safe-right));
-            }
-            body[data-ui="compact"] #scoreHud::before { content: none; }
-            body[data-ui="compact"] .hud-block { padding-right: 6px; padding-left: 6px; }
-        }
         body { --stick-size: clamp(80px, 20vmin, 104px); }
         #joystick {
             position: fixed;
@@ -590,8 +555,8 @@
         body[data-controls="touch"][data-stick="left"] #jumpBtn { left: auto; right: calc(8px + var(--safe-right)); bottom: 8px; }
         body[data-controls="touch"] #pauseBtn { bottom: calc(var(--stick-size) + 20px); }
         @media (orientation: landscape) and (min-width: 560px) {
-            body[data-controls="touch"] #hud { right: calc(84px + var(--safe-right)); }
-            body[data-controls="touch"] #pauseBtn { top: 8px; right: calc(8px + var(--safe-right)); bottom: auto; }
+            body[data-controls="touch"] #hud { right: calc(96px + var(--safe-right)); }
+            body[data-controls="touch"] #pauseBtn { top: calc(10px + var(--safe-top)); right: calc(10px + var(--safe-right)); bottom: auto; }
         }
         #menu .btn-row #playBtn, #menu .btn-row #challengeBtn { flex: 0 0 100%; width: 100%; }
         #challengeBtn small { display: block; margin-top: 5px; font-size: 11px; line-height: 1.4; letter-spacing: 0.5px; font-weight: normal; color: #d2bb92; }
@@ -654,7 +619,7 @@
     <div id="howto" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="howTitle">
         <div class="panel howto">
             <h2 id="howTitle">How to Play</h2>
-            <p>Survive 5 waves. Dodge bombs and blasts.</p>
+            <p>Survive 5 waves. Dodge bombs and blasts. A siren warns you before each giant bomb.</p>
             <p id="howPickups">Jump over soldiers and bullets. Catch airdrops for extra lives.</p>
             <p id="howControls">Move the mouse to steer. Click the playfield to jump.</p>
             <p>Hold jump to go a little farther.</p>
@@ -747,6 +712,7 @@
 
         const LEVEL_TIME = 60;
         const MAX_LEVEL = 5;
+        const GIANT_BOMB_WARNING = 3;
         const INVULN = 1.15;
         const BACKGROUND_FADE_TIME = 2.5;
         const VICTORY_GRACE_TIME = 5;
@@ -999,6 +965,7 @@
             banner.t = dur;
             bannerEl.textContent = text;
             bannerEl.classList.toggle('hidden', !text);
+            bannerEl.classList.toggle('giant-warning', text === 'GIANT BOMB!');
         }
 
         function effectsAreReduced() {
@@ -2522,6 +2489,26 @@
                     const dur = Math.max(0.2, Math.min(effectDuration || 0.8, giant ? 1.4 : 0.9));
                     sine(giant ? 170 : 620, giant ? 52 : 210, dur, giant ? 0.11 : 0.035);
                     if (giant) sine(112, 42, dur * 1.05, 0.075, 0.04);
+                } else if (type === 'siren') {
+                    const dur = Math.max(1.2, Math.min(effectDuration || GIANT_BOMB_WARNING, 4));
+                    function wail(fLo, fHi, vol, wave) {
+                        const o = audioCtx.createOscillator();
+                        const g = audioCtx.createGain();
+                        o.type = wave;
+                        o.frequency.setValueAtTime(fLo, t0);
+                        o.frequency.linearRampToValueAtTime(fHi, t0 + dur * 0.48);
+                        o.frequency.linearRampToValueAtTime(fLo * 0.92, t0 + dur);
+                        g.gain.setValueAtTime(0.0001, t0);
+                        g.gain.linearRampToValueAtTime(vol * volumeScale, t0 + 0.09);
+                        g.gain.linearRampToValueAtTime(vol * volumeScale, t0 + Math.max(0.12, dur - 0.22));
+                        g.gain.linearRampToValueAtTime(0.0001, t0 + dur);
+                        o.connect(g);
+                        g.connect(dest);
+                        o.start(t0);
+                        o.stop(t0 + dur + 0.04);
+                    }
+                    wail(480, 860, 0.12, 'sine');
+                    wail(360, 640, 0.08, 'triangle');
                 } else if (type === 'pickup') {
                     sine(420, 0, 0.09, 0.14);
                     sine(640, 0, 0.12, 0.12, 0.07);
@@ -2829,7 +2816,7 @@
         function configureGiantBombs() {
             let firstAt = 6 + Math.random() * 40;
             if (Math.abs(firstAt - airdropAt) < 4) firstAt = Math.min(52, airdropAt + 10);
-            giantBombWaves = [{ at: firstAt, spawned: false }];
+            giantBombWaves = [{ at: firstAt, spawned: false, warned: false }];
 
             if (level === 5) {
                 let secondAt = 6;
@@ -2841,7 +2828,7 @@
                     attempts < 30 &&
                     (Math.abs(secondAt - firstAt) < 8 || Math.abs(secondAt - airdropAt) < 4)
                 );
-                giantBombWaves.push({ at: secondAt, spawned: false });
+                giantBombWaves.push({ at: secondAt, spawned: false, warned: false });
                 giantBombWaves.sort((a, b) => a.at - b.at);
             }
             if (runRules().extraGiants) {
@@ -2853,7 +2840,7 @@
                     if (gap > bestGap) { at = candidate; bestGap = gap; }
                     if (gap >= 6) break;
                 }
-                giantBombWaves.push({ at, spawned: false });
+                giantBombWaves.push({ at, spawned: false, warned: false });
                 giantBombWaves.sort((a, b) => a.at - b.at);
             }
         }
@@ -2938,16 +2925,21 @@
             return id < 0 ? utility.anchors[0] : id > 3 ? utility.anchors[1] : utility.poles[id];
         }
 
-        function makeUtilityPart(pole, lo, hi, angle, mobile, direction) {
-            const part = { lo, hi, angle, mobile, direction, x: 0, y: -lo, velocity: mobile ? direction * 0.18 : 0,
-                settled: false, bounced: false, outline: [] };
+        function makeUtilityPart(pole, lo, hi, angle, mobile, direction, from) {
+            const length = Math.max(0.12, hi - lo);
+            const inherited = from && from.mobile && Number.isFinite(from.velocity) ? from.velocity : null;
+            const part = {
+                lo, hi, angle, mobile, direction, x: 0, y: -lo,
+                velocity: inherited != null ? inherited : (mobile ? direction * 0.32 / Math.sqrt(length) : 0),
+                settled: false, bounced: !!(from && from.bounced), outline: []
+            };
             const points = [[-4/256,hi],[4/256,hi],[-4/256,lo],[4/256,lo],
                 [-25/256,226/256],[25/256,226/256],[-25/256,239/256],[25/256,239/256]];
             if (pole.id % 2) points.push([21/256,169/256],[21/256,200/256]);
             for (const [x, height] of points) {
                 if (height < lo || height > hi) continue;
-                const length = height - lo;
-                part.outline.push({ x, length, radius: Math.hypot(x, length), phase: Math.atan2(x * direction, length) });
+                const span = height - lo;
+                part.outline.push({ x, length: span, radius: Math.hypot(x, span), phase: Math.atan2(x * direction, span) });
             }
             return part;
         }
@@ -3101,7 +3093,7 @@
 
         function utilityBurst(x, y, seed, sparks) {
             const reduced = effectsAreReduced();
-            const count = reduced ? 3 : (sparks ? 6 : 10);
+            const count = reduced ? 3 : (sparks ? 7 : 14);
             for (let i = 0; i < count; i++) {
                 const noise = crackNoise(seed, i + 2);
                 const speed = Math.min(140, player.h * 1.4);
@@ -3114,23 +3106,27 @@
         function toppleUtilityPole(pole, sourceX, requestedStage) {
             const next = requestedStage || 'base';
             if (pole.stage === 'ground' || pole.stage === next || (pole.stage === 'base' && next === 'middle')) return;
-            // Outer poles fall inward, keeping their ruined silhouettes in view on phones.
+            // A pole already leaning or falling keeps that way; reversing through vertical looks fake.
+            const alreadyFalling = pole.stage !== 'intact' || pole.parts.some((part) => part.mobile);
+            const lean = pole.parts[0] ? pole.parts[0].angle : 0;
             let direction = pole.direction;
-            if (pole.id > 0 && pole.id < 3 && sourceX != null) {
+            if (Math.abs(lean) > 0.03) direction = lean > 0 ? 1 : -1;
+            else if (!alreadyFalling && pole.id > 0 && pole.id < 3 && sourceX != null) {
                 direction = pole.nx * worldW >= sourceX ? 1 : -1;
             }
+            pole.direction = direction;
             if (next === 'ground') {
                 // Release the last support at the foot; existing upper hinges and pieces survive.
                 const root = pole.parts[0];
-                const released = makeUtilityPart(pole, root.lo, root.hi, root.angle, true, direction);
-                pole.parts[0] = released;
+                pole.parts[0] = makeUtilityPart(pole, root.lo, root.hi, root.angle, true, root.direction || direction, root);
             } else {
                 const cut = next === 'middle' ? pole.middleBreak : pole.baseBreak;
                 const index = pole.parts.findIndex(part => part.lo < cut && part.hi > cut);
                 if (index < 0) return;
                 const old = pole.parts[index];
-                const lower = makeUtilityPart(pole, old.lo, cut, old.angle, old.mobile, old.direction);
-                const upper = makeUtilityPart(pole, cut, old.hi, old.angle, true, direction);
+                const fallDir = old.mobile ? old.direction : direction;
+                const lower = makeUtilityPart(pole, old.lo, cut, old.angle, old.mobile, old.direction, old.mobile ? old : null);
+                const upper = makeUtilityPart(pole, cut, old.hi, old.angle, true, fallDir, old);
                 pole.parts.splice(index, 1, lower, upper);
                 pole.fracture = cut;
             }
@@ -3142,6 +3138,62 @@
             const fracture = next === 'ground' ? pole.parts[0] : pole.parts.find(part => part.lo === pole.fracture);
             utilityBurst((pole.nx * worldW) + fracture.x * player.h * UTILITY_HEIGHT,
                 groundAt(pole.nx * worldW) + 3 + fracture.y * player.h * UTILITY_HEIGHT, pole.seed + pole.parts.length, false);
+        }
+
+        function settleUtilityPart(part, pole, target, reduced) {
+            const impact = Math.abs(part.velocity);
+            part.angle = target;
+            if (!part.settled && impact > 0.6 && !reduced && !part.bounced) {
+                part.bounced = true;
+                part.velocity = -part.direction * impact * 0.18;
+                if (Math.abs(target) < Math.PI - 0.01) {
+                    const h = player.h * UTILITY_HEIGHT;
+                    const tip = part.hi - part.lo;
+                    utilityBurst(
+                        pole.nx * worldW + (part.x + Math.sin(part.angle) * tip) * h,
+                        groundAt(pole.nx * worldW + (part.x + Math.sin(part.angle) * tip) * h) + 3,
+                        pole.seed + part.lo * 256, false
+                    );
+                }
+            } else {
+                part.velocity = 0;
+                part.settled = true;
+            }
+            if (Math.abs(part.velocity) < 0.08) {
+                part.velocity = 0;
+                part.settled = true;
+            }
+        }
+
+        function stepUtilityPart(part, pole, step, reduced) {
+            if (!part.mobile) return false;
+            const target = utilityContactAngle(part, pole);
+            const dir = part.direction || (part.angle >= 0 ? 1 : -1);
+            part.direction = dir;
+            const tilt = part.angle * dir;
+            const targetTilt = target * dir;
+            const length = Math.max(0.1, part.hi - part.lo);
+            // Clamp when driving into the ground. A rebound is allowed to lift off once.
+            if (tilt >= targetTilt && part.velocity * dir >= 0) {
+                settleUtilityPart(part, pole, target, reduced);
+                return !part.settled;
+            }
+            if (part.settled) {
+                if (targetTilt - tilt > 0.035) {
+                    part.settled = false;
+                    part.velocity = dir * 0.1;
+                } else {
+                    part.angle = target;
+                    part.velocity = 0;
+                    return false;
+                }
+            }
+            // α ≈ (3g / 2L) sinθ: short stumps flop quickly, long shafts take longer to go over.
+            part.velocity += dir * (2.4 / length) * Math.sin(Math.max(0.04, tilt)) * step;
+            part.velocity *= Math.max(0, 1 - (reduced ? 1.4 : 0.2) * step);
+            part.angle += part.velocity * step;
+            if ((part.angle - target) * dir >= 0) settleUtilityPart(part, pole, target, reduced);
+            return !part.settled;
         }
 
         function splitUtilityWireLength(wire) {
@@ -3301,28 +3353,7 @@
                     let anchorX = 0, anchorY = -pole.lift, moving = false;
                     for (const part of pole.parts) {
                         part.x = anchorX; part.y = anchorY;
-                        if (part.mobile) {
-                            const target = utilityContactAngle(part, pole);
-                            if (part.settled && (target - part.angle) * part.direction > 0.04) {
-                                part.settled = false; part.velocity = part.direction * 0.1;
-                            }
-                            if (part.settled) part.angle = target;
-                            else {
-                                part.velocity += part.direction * (0.45 + Math.abs(Math.sin(part.angle)) * 3.8) * step;
-                                part.angle += part.velocity * step;
-                                if ((part.angle - target) * part.direction >= 0) {
-                                    part.angle = target;
-                                    if (!part.bounced) {
-                                        part.bounced = true;
-                                        if (Math.abs(target) < Math.PI - 0.01) utilityBurst(pole.nx * worldW + (part.x + Math.sin(part.angle) * (part.hi - part.lo)) * player.h * UTILITY_HEIGHT,
-                                            groundAt(pole.nx * worldW + (part.x + Math.sin(part.angle) * (part.hi - part.lo)) * player.h * UTILITY_HEIGHT) + 3, pole.seed + part.lo * 256, false);
-                                        if (!reduced) part.velocity *= -0.1;
-                                    } else part.velocity = 0;
-                                    if (reduced || part.velocity === 0) { part.settled = true; part.velocity = 0; }
-                                }
-                            }
-                            if (!part.settled) moving = true;
-                        }
+                        if (stepUtilityPart(part, pole, step, reduced)) moving = true;
                         anchorX += Math.sin(part.angle) * (part.hi - part.lo);
                         anchorY -= Math.cos(part.angle) * (part.hi - part.lo);
                     }
@@ -3371,19 +3402,31 @@
             for (const y of [47, 96, 208, 240]) g.fillRect(28, y, 8, 3);
             g.fillStyle = '#b09b65'; g.fillRect(30, 104, 4, 5);
             g.fillStyle = '#2b2820'; g.fillRect(31, 105, 1, 3);
-            for (let j = 0; j < damage * 3; j++) {
-                const y = 42 + Math.floor(crackNoise(pole.seed, 150 + j) * 207);
-                const x = 29 + Math.floor(crackNoise(pole.seed, 200 + j) * 5);
+            for (let j = 0; j < damage * 5; j++) {
+                const y = 18 + Math.floor(crackNoise(pole.seed, 150 + j) * 230);
+                const x = 28 + Math.floor(crackNoise(pole.seed, 200 + j) * 7);
                 g.fillStyle = j % 3 ? '#151610' : '#a08756';
-                g.fillRect(x, y, 1, 3 + j % 5);
-                g.fillRect(x - 1, y + 3, 1, 3);
+                g.fillRect(x, y, 1, 4 + j % 6);
+                g.fillRect(x - 1, y + 2, 1, 4);
+                if (j % 4 === 0) g.fillRect(x + 1, y + 1, 1, 2 + j % 3);
+            }
+            if (damage > 2) {
+                g.fillStyle = 'rgba(12,14,10,' + Math.min(0.45, damage * 0.05) + ')';
+                g.fillRect(28, 0, 8, 256);
+            }
+            if (damage > 4) {
+                g.fillStyle = '#1a1812';
+                g.fillRect(52, 16, 6, 11);
+                g.fillStyle = '#6d5a38';
+                g.fillRect(53, 24, 3, 2);
             }
             if (damage > 1) {
                 for (const cut of [pole.baseBreak, pole.middleBreak]) {
                     const y = (1 - cut) * 256;
                     g.strokeStyle = '#11140f'; g.lineWidth = damage > 5 ? 2 : 1;
-                    g.beginPath(); g.moveTo(28, y + 4); g.lineTo(32, y - damage); g.lineTo(31, y - damage * 2); g.lineTo(35, y - damage * 3); g.stroke();
-                    g.fillStyle = 'rgba(13,15,11,' + damage * 0.025 + ')'; g.fillRect(28, y - 12, 8, 24);
+                    g.beginPath(); g.moveTo(27, y + 5); g.lineTo(31, y - damage); g.lineTo(30, y - damage * 2.2); g.lineTo(36, y - damage * 3.4); g.stroke();
+                    g.beginPath(); g.moveTo(36, y + 3); g.lineTo(33, y - damage * 1.4); g.lineTo(29, y + 6); g.stroke();
+                    g.fillStyle = 'rgba(13,15,11,' + Math.min(0.35, damage * 0.04) + ')'; g.fillRect(27, y - 14, 10, 28);
                 }
             }
             pole.cache = c; pole.cacheDamage = damage;
@@ -3442,19 +3485,44 @@
         }
 
         function drawUtilitySplinters(pole, cut, height, y, side) {
-            ctx.fillStyle = side > 0 ? '#9c8152' : '#806d49';
-            ctx.beginPath(); ctx.moveTo(-height / 64, y);
-            for (let j = 0; j < 5; j++) {
-                const reach = (0.004 + crackNoise(pole.seed + cut * 256, j + 83) * 0.021) * height;
-                ctx.lineTo((-0.016 + j * 0.008) * height, y + side * reach);
-                ctx.lineTo((-0.012 + j * 0.008) * height, y - side * height * 0.004);
+            const half = height / 28;
+            ctx.fillStyle = side > 0 ? '#4e3f28' : '#2c261c';
+            ctx.beginPath(); ctx.moveTo(-half, y);
+            ctx.lineTo(-half * 0.85, y + side * height * 0.006);
+            for (let j = 0; j < 7; j++) {
+                const across = (-0.5 + j / 6) * height / 16;
+                const reach = (0.007 + crackNoise(pole.seed + cut * 256, j + 83) * 0.038) * height;
+                ctx.lineTo(across - height * 0.003, y + side * reach);
+                ctx.lineTo(across + height * 0.004, y + side * reach * (0.28 + crackNoise(pole.seed, j + 91) * 0.4));
             }
-            ctx.lineTo(height / 64, y); ctx.fill();
+            ctx.lineTo(half, y); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = side > 0 ? '#c4a56a' : '#8a7349';
+            ctx.beginPath(); ctx.moveTo(-half * 0.7, y);
+            for (let j = 0; j < 7; j++) {
+                const across = (-0.45 + j / 6) * height / 18;
+                const reach = (0.003 + crackNoise(pole.seed + cut * 256, j + 110) * 0.02) * height;
+                ctx.lineTo(across, y + side * reach);
+            }
+            ctx.lineTo(half * 0.7, y); ctx.closePath(); ctx.fill();
         }
 
         function bombBaseSize() {
             const bw = Math.round(player.w * 0.86);
             return { bw: bw, bh: Math.round(bw * 2.1) };
+        }
+
+        function giantBombFallTime(x) {
+            const size = bombBaseSize();
+            const bh = size.bh * 2;
+            const fall = (1.7 - (level - 1) * 0.14) / 1.7;
+            const speed = worldH / Math.max(0.7, fall);
+            const startY = -bh - 8;
+            const cx = Number.isFinite(x) ? x : worldW * 0.5;
+            return Math.max(0.25, (groundAt(cx) - bh - startY) / speed);
+        }
+
+        function giantBombWarnAt(wave) {
+            return wave.at - Math.max(0, GIANT_BOMB_WARNING - giantBombFallTime());
         }
 
         function bombBlastRadius(giant) {
@@ -3727,9 +3795,15 @@
             if (giant || Math.random() < 0.22) beep('whistle', giant, x + bw / 2, fall);
         }
 
+        function warnGiantBomb() {
+            const already = banner.text === 'GIANT BOMB!';
+            setBanner('GIANT BOMB!', GIANT_BOMB_WARNING);
+            if (!already) beep('siren', true, undefined, GIANT_BOMB_WARNING);
+        }
+
         function spawnGiantBomb() {
             spawnBomb(true);
-            setBanner('Giant bomb!', 1.5);
+            if (banner.text !== 'GIANT BOMB!') setBanner('GIANT BOMB!', Math.max(1.2, giantBombFallTime()));
         }
 
         function spawnEnemy(fromLeft) {
@@ -3827,6 +3901,7 @@
         }
 
         function explode(x, y, fromGround, giant, sourceBomb) {
+            if (giant && banner.text === 'GIANT BOMB!') setBanner('', 0);
             const r = bombBlastRadius(giant);
             damageUtilityPoles(x, y, r, giant);
             const life = giant ? 0.75 : 0.45;
@@ -4174,7 +4249,12 @@
                     extraAirdropSpawned = true;
                 }
                 giantBombWaves.forEach((wave) => {
-                    if (wave.spawned || elapsed < wave.at) return;
+                    if (wave.spawned) return;
+                    if (!wave.warned && elapsed >= giantBombWarnAt(wave)) {
+                        warnGiantBomb();
+                        wave.warned = true;
+                    }
+                    if (elapsed < wave.at) return;
                     spawnGiantBomb();
                     wave.spawned = true;
                 });

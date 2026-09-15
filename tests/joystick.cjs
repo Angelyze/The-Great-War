@@ -13,7 +13,8 @@ module.exports = async ({assert,game,evaluate,call,screenshot,errors}) => {
             await game(`save.controls='touch';save.joystickSide=${JSON.stringify(side)};layout();startPlay();player.invuln=9999;lastBomb=1e9;spawnEvery=1e9;draw();`);
             const rects=await game(`(()=>{const r=e=>{const b=e.getBoundingClientRect();return{x:b.x,y:b.y,w:b.width,h:b.height,right:b.right,bottom:b.bottom}};return {hud:r(hudEl),stick:r(joystickEl),jump:r(jumpBtn),pause:r(pauseBtn)}})()`);
             const overlap=(a,b)=>a.x<b.right&&a.right>b.x&&a.y<b.bottom&&a.bottom>b.y;
-            assert(rects.hud.x===8 && rects.hud.y===8,JSON.stringify(rects));
+            const shortLandscape=w>h&&h<=500;
+            assert(rects.hud.x===(shortLandscape?7:10) && rects.hud.y===(shortLandscape?6:10),JSON.stringify({w,h,rects}));
             assert((side==='right'?w-rects.stick.right:rects.stick.x)===8&&h-rects.stick.bottom===8,'equal joystick edge margins');
             assert((side==='right'?rects.jump.x:w-rects.jump.right)===8&&h-rects.jump.bottom===8,'matching opposite-side jump margins');
             assert(rects.stick.x>=0&&rects.stick.right<=w&&rects.stick.bottom<=h);

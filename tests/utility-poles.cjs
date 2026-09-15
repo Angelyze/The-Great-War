@@ -219,6 +219,27 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await screenshot('fracture-stages-1280x720');
     console.log('PASS: offscreen spans and middle/base/ground stages at 5 sizes in full/reduced modes');
 
+    await resize(1280,720);
+    const physics=await game(`(()=>{
+        resetRun();showScreen('play');save.effects='full';
+        const p=utility.poles[1],x=p.nx*worldW;
+        toppleUtilityPole(p,x-20,'middle');
+        const dir=p.parts[1].direction;
+        let maxDepth=0;
+        const sample=()=>{maxDepth=Math.max(maxDepth,utilityLowestPoint(p));};
+        for(let i=0;i<400;i++){updateUtilityPoles(1/120,true);sample();}
+        toppleUtilityPole(p,x+20,'base');
+        const frozen=p.parts.every(q=>!q.mobile||q.direction===dir);
+        for(let i=0;i<800;i++){updateUtilityPoles(1/120,true);sample();}
+        toppleUtilityPole(p,undefined,'ground');
+        for(let i=0;i<900;i++){updateUtilityPoles(1/120,true);sample();}
+        const stump=p.parts[0],top=p.parts[p.parts.length-1];
+        return {frozen,maxDepth,fallen:p.state==='fallen',grounded:utilityLowestPoint(p)<=0.002,
+            shortFlop:Math.abs(stump.angle)>1,material:Math.abs(p.parts.reduce((s,q)=>s+q.hi-q.lo,0)-1)<0.00001};
+    })()`);
+    assert(physics.frozen&&physics.maxDepth<0.05&&physics.fallen&&physics.grounded&&physics.shortFlop&&physics.material,JSON.stringify(physics));
+    console.log('PASS: falling poles keep direction, stay supported, and short pieces flop onto the ground');
+
     // Preserve identity, deadlines, angles and broken attachments through a live reflow.
     await resize(360,800);
     await game(`resetRun();save.effects='full';toppleUtilityPole(utility.poles[1]);for(let i=0;i<50;i++)updateUtilityPoles(1/120,true);

@@ -12,6 +12,14 @@ module.exports = async function ({ assert, game, evaluate, call, screenshot, err
     for (const [w,h] of sizes) {
         const safe = w > h ? [0,0,16,24] : [24,0,20,0];
         await viewport(w,h,true,safe);
+        const menu=await game(`(()=>{
+            showScreen('menu');
+            const panel=screens.menu.querySelector('.panel').getBoundingClientRect();
+            return {x:panel.x,y:panel.y,w:panel.width,h:panel.height,ui:document.body.dataset.ui};
+        })()`);
+        assert.equal(menu.ui,'compact');
+        assert(Math.abs(menu.x)<1&&Math.abs(menu.y)<1&&Math.abs(menu.w-w)<2&&Math.abs(menu.h-h)<2,JSON.stringify({w,h,menu}));
+        if(w===360||(w===800&&h===360)||(w===800&&h===400)) await screenshot('mobile-menu-'+w+'x'+h);
         await game("startPlay();player.invuln=9999;lastBomb=1e9;spawnEvery=1e9;");
         for (let level = 1; level <= 5; level++) {
             const result = await game(`(() => {
@@ -19,16 +27,23 @@ module.exports = async function ({ assert, game, evaluate, call, screenshot, err
                 setBanner('Level '+level+' — '+LEVEL_NAMES[level-1],2);
                 const bounds=e=>{const r=e.getBoundingClientRect();return{x:r.x,y:r.y,w:r.width,h:r.height,right:r.right,bottom:r.bottom}};
                 const hud=bounds(hudEl),notice=bounds(bannerEl),jump=bounds(jumpBtn),pause=bounds(pauseBtn);
+                const hudBox=getComputedStyle(hudEl),levelBox=getComputedStyle(hudLeft);
                 return {compact:document.body.dataset.ui==='compact',hud,notice,jump,pause,
                     fits:[hudEl,hudLeft,document.getElementById('hudRight')].every(e=>e.scrollWidth<=e.clientWidth+1),
                     tutorial:!!document.getElementById('tutorialHint'),
                     middle:document.elementFromPoint(worldW/2,worldH/2).id,
                     text:hudLeft.textContent,
+                    boxed:hudBox.borderTopWidth==='0px'&&(levelBox.borderTopWidth==='3px'||levelBox.borderTopWidth==='2px'),
+                    banner:getComputedStyle(bannerEl).position,
                     touch:!jumpBtn.classList.contains('hidden')&&!pauseBtn.classList.contains('hidden')};
             })()`);
-            assert(result.compact && result.fits && !result.tutorial && result.touch,JSON.stringify({w,h,level,result}));
+            assert(result.compact && result.fits && !result.tutorial && result.touch && result.boxed,JSON.stringify({w,h,level,result}));
             assert.equal(result.middle,'gameCanvas');
-            assert(result.hud.x===safe[3]+8 && result.hud.right<=w-safe[1] && result.hud.y===8,JSON.stringify(result));
+            assert.equal(result.banner,'fixed');
+            const shortLandscape=w>h&&h<=500;
+            const hudX=safe[3]+(shortLandscape?7:10);
+            const hudY=safe[0]+(shortLandscape?6:10);
+            assert(result.hud.x===hudX && result.hud.right<=w-safe[1] && result.hud.y===hudY,JSON.stringify({w,h,hudX,hudY,result}));
             assert(result.notice.y>=result.hud.bottom && result.notice.bottom<h*0.45,JSON.stringify({w,h,result}));
             for(const button of [result.jump,result.pause]) {
                 assert(button.w>=48 && button.h>=48 && button.h<=56 && button.x>=safe[3] && button.right<=w-safe[1]+1 && button.bottom<=h-8+1,JSON.stringify({w,h,button}));

@@ -68,6 +68,26 @@ module.exports = async ({assert,game,evaluate,call,screenshot,errors,resize}) =>
     })()`));
     console.log('PASS: 7 responsive menus, legacy saves, 20 wave configurations, pickups, locked run rules, restart/replay, separate records and Normal-only platform score');
 
+    const giantWarn=await game(`(()=>{
+        save.challenge='normal';resetRun();showScreen('play');save.effects='reduced';
+        spawnEvery=1e9;lastBomb=0;enemyWaves=[];airdropSpawned=true;extraAirdropSpawned=true;
+        giantBombWaves=[{at:12,spawned:false,warned:false}];
+        const fall=giantBombFallTime();
+        const warnAt=giantBombWarnAt(giantBombWaves[0]);
+        const step=(elapsed)=>{timeLeft=LEVEL_TIME-elapsed;update(1/60,0);};
+        step(warnAt-0.2);
+        const silent=banner.text!=='GIANT BOMB!'&&!giantBombWaves[0].warned&&bombs.length===0;
+        step(warnAt+0.05);
+        const warning=banner.text==='GIANT BOMB!'&&bannerEl.classList.contains('giant-warning')&&giantBombWaves[0].warned&&bombs.length===0;
+        step(12-0.05);
+        const waiting=bombs.length===0&&!giantBombWaves[0].spawned&&banner.text==='GIANT BOMB!';
+        step(12.05);
+        const spawned=giantBombWaves[0].spawned&&bombs.some(b=>b.giant)&&banner.text==='GIANT BOMB!';
+        return {silent,warning,waiting,spawned,timed:Math.abs((12+fall)-warnAt-GIANT_BOMB_WARNING)<0.05,lead:warnAt>8&&warnAt<12};
+    })()`);
+    assert(giantWarn.silent&&giantWarn.warning&&giantWarn.waiting&&giantWarn.spawned&&giantWarn.timed&&giantWarn.lead,JSON.stringify(giantWarn));
+    console.log('PASS: GIANT BOMB! warning and siren window 3 seconds before impact, spawn time unchanged');
+
     const rates=await game(`(()=>{
         const original=spawnBomb;let count=0;spawnBomb=giant=>{if(!giant)count++;};
         const results=[];
