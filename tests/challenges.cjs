@@ -97,7 +97,7 @@ module.exports = async ({assert,game,evaluate,call,screenshot,errors,resize}) =>
                 level=stage;spawnEvery=Math.max(380,950-(stage-1)*140);lastBomb=0;
                 enemyWaves=[];giantBombWaves=[];airdropSpawned=true;extraAirdropSpawned=true;count=0;
                 for(let i=0;i<fps*20;i++)update(1/fps,0);
-                const multiplier=['air_raid','impossible'].includes(id)?1.4:1;
+                const multiplier=id==='air_raid'?1.5:id==='impossible'?1.4:1;
                 const expected=20000/(spawnEvery/multiplier);
                 results.push({id,stage,fps,actual:count,expected,configured:runRules().bombRate===multiplier,remainder:lastBomb>=0&&lastBomb<spawnEvery/multiplier+0.001});
             }
@@ -131,9 +131,9 @@ module.exports = async ({assert,game,evaluate,call,screenshot,errors,resize}) =>
         assert.equal(c.giants,['air_raid','impossible'].includes(id)?11:6);
         assert(c.won&&c.noGraceSpawns&&c.duration>=305&&c.duration<306&&c.terrain<=0.650001,JSON.stringify({id,c}));
     }
-    assert(totals.air_raid.bombs/totals.normal.bombs>1.39&&totals.air_raid.bombs/totals.normal.bombs<1.41);
-    assert.equal(totals.impossible.bombs,totals.air_raid.bombs);
+    assert(totals.air_raid.bombs/totals.normal.bombs>1.49&&totals.air_raid.bombs/totals.normal.bombs<1.51);
+    assert(totals.impossible.bombs/totals.normal.bombs>1.39&&totals.impossible.bombs/totals.normal.bombs<1.41);
     assert.equal(totals.one_life.bombs,totals.normal.bombs);
-    console.log('PASS: full five-level runs, 40% higher bombing frequency and final grace: '+JSON.stringify(totals));
+    console.log('PASS: full five-level runs, 50% higher Air Raid and 40% higher Impossible bombing frequency and final grace: '+JSON.stringify(totals));
     assert.equal(errors.length,0,JSON.stringify(errors));
 };
