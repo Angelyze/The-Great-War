@@ -716,15 +716,15 @@
         const GIANT_BOMB_WARNING = 3;
         const INVULN = 1.15;
         const BACKGROUND_FADE_TIME = 2.5;
-        const VICTORY_GRACE_TIME = 5;
-        const VICTORY_REVEAL_TIME = 1.8;
+        const VICTORY_GRACE_TIME = 3;
+        const VICTORY_REVEAL_TIME = 2;
         const JUMP_HOLD_TIME = 0.16;
         const JUMP_HOLD_GRAVITY = 0.75;
         const MAX_PARTICLES = 220;
         const MAX_SCORE_POPUPS = 20;
         const MAX_CANVAS_PIXELS = 8294400;
-        const MAX_CITY_BOMBS = 7;
-        const MAX_CITY_BLASTS = 12;
+        const MAX_CITY_BOMBS = 10;
+        const MAX_CITY_BLASTS = 20;
         const LEVEL_NAMES = ['The Beginning', 'Ashes in the Air', 'No Safe Ground', "It's Getting Darker", 'Last Man Standing'];
         // The whole war takes place in morning daylight (9–11 a.m.). Smoke, not sunset, removes the light.
         const SKY = ['#93b2ba', '#89978f', '#737770', '#565953', '#3b403d'];
@@ -788,8 +788,8 @@
         let scorchMarks = [];
         // Fixed-size, normalized heightfield: survives rotation without resampling or healing.
         const terrainDepth = new Float32Array(257);
-        const TERRAIN_MAX_DEPTH = 0.65;
-        const TERRAIN_IMPACT_DEPTH = 0.014;
+        const TERRAIN_MAX_DEPTH = 0.7;
+        const TERRAIN_IMPACT_DEPTH = 0.015;
         let terrainRevision = 0;
 
         function terrainDepthAt(nx) {
